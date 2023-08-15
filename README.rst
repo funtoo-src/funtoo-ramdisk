@@ -51,7 +51,7 @@ So, what *does* Funtoo's ramdisk tool actually offer? Here's a list:
 
 * genkernel-style initramfs without the cruft. In comparison to genkernel's
   initramfs, the shell code is about 10x simpler and a lot cleaner, but does
-  the same thing and has been modernized. About 150 lines of bash shell,
+  the same thing and has been modernized. About 150 lines of shell script,
   with another 150 lines of functions.
 
 * Rootless operation. You do not need enhanced privileges to create the
