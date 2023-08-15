@@ -1,1 +1,1 @@
-include funtoo_ramdisk/support/**
+recursive-include funtoo_ramdisk/support *

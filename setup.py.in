@@ -22,7 +22,8 @@ setuptools.setup(
 	install_requires=[
 		"rich",
 	],
-	packages=setuptools.find_packages()
+	packages=setuptools.find_packages(),
+	include_package_data=True
 )
 
 # vim: ts=4 sw=4 noet
