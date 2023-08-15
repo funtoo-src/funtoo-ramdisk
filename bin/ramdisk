@@ -28,12 +28,12 @@ if os.path.isdir(proj_path):
 	if os.path.exists(mod_path):
 		from_git = True
 		sys.path.insert(0, mod_path)
-		support_root = os.path.normpath(os.path.join(f_path, "../support"))
+		support_root = os.path.join(mod_path, "support")
 
 if not from_git:
 	# import the module just to use it to get the path to the files.
 	import funtoo_ramdisk
-	support_root = os.path.normpath(os.path.join(funtoo_ramdisk.__file__, "../../support"))
+	support_root = os.path.normpath(os.path.join(funtoo_ramdisk.__file__, "../support"))
 
 from funtoo_ramdisk.initramfs import InitialRamDisk
 try:
