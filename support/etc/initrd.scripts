@@ -1,0 +1,154 @@
+#!/bin/ash
+
+. /etc/initrd.defaults
+
+backup() {
+	echo -ne "\033[0G\033[0K"
+}
+
+do_modprobe() {
+	for x in ${*}; do
+		echo -ne "${BOLD}   ::${NORMAL} Loading ${x}..."
+		modprobe -q "${x}" > /dev/null 2>&1
+		backup
+		echo -ne "${NORMAL}"
+	done
+
+}
+
+modules_scan() {
+	[ -e "/etc/modules/${1}.done" ] && return
+	local MODS
+	[ -f "/etc/modules/${1}" ] && MODS="$(cat /etc/modules/${1})"
+	do_modprobe $MODS
+	touch /etc/modules/"${1}.done"
+}
+
+mount_sysfs() {
+	mount -t sysfs sysfs /sys -o noexec,nosuid,nodev >/dev/null 2>&1
+	ret=$?
+	[ ${ret} -eq 0 ] || bad_msg "Failed to mount /sys!"
+}
+
+run_shell() {
+	modules_scan usb usb-input
+	/bin/ash
+}
+
+fs_type_in_use() {
+	fs_type=$1
+	cut -d ' ' -f 3 < /proc/mounts | grep -F -q "${fs_type}"
+}
+
+determine_root() {
+	# This function attempts to find the underlying block device associated with REAL_ROOT.
+	# It could be a LABEL= or UUID=, in which case ``blkid`` is used to get the underlying
+	# device. Upon success, return 0 and $REAL_ROOT will be set to the block device.
+	# Otherwise, return 1 and $REAL_ROOT will be set to "".
+
+	MOUNT_STATE=ro
+	case "${REAL_ROOT}" in
+		LABEL=*|UUID=*)
+			good_msg "Looking for root device ${REAL_ROOT}"
+			ROOT_DEV=$(blkid -o device -l -t "${REAL_ROOT}")
+			if [ $? -eq 0 ] && [ -b "${ROOT_DEV}" ]; then
+				good_msg "Found associated block device ${ROOT_DEV}"
+				REAL_ROOT="${ROOT_DEV}"
+				return 0
+			fi
+			;;
+		*)
+			if [ -b "${REAL_ROOT}" ]; then
+				good_msg "Specified block device ${REAL_ROOT} was found."
+				return 0
+			fi
+			;;
+	esac
+	return 1
+}
+
+mount_real_root() {
+	# This function assumes that $REAL_ROOT is set to a legitimate block device. It will attempt
+	# to mount this block device (it checks first to make sure it isn't already mounted.)
+	# It returns 0 on success and 1 on failure.
+
+	mountpoint -q /newroot && return 0
+	# Is it already mounted at mount point? Maybe user did it manually and exited shell:
+
+	# If $REAL_ROOT is a symlink
+	# Resolve it like util-linux mount does
+	[ -L "${REAL_ROOT}" ] && REAL_ROOT=$(readlink "${REAL_ROOT}")
+	# mount ro so fsck doesn't barf later
+	local opts="${MOUNT_STATE}"
+	[ -n "${REAL_ROOTFLAGS}" ] && opts="${opts},${REAL_ROOTFLAGS}"
+	good_msg "Using mount -t ${ROOTFSTYPE} -o ${opts}"
+	mount -t "${ROOTFSTYPE}" -o "${opts}" "${REAL_ROOT}" /newroot && return 0
+	return 1
+}
+
+
+for char_dev in console null; do
+	if [ ! -c "${CHROOT}/dev/${char_dev}" ]; then
+		bad_msg "ERROR: your root filesystem is missing (or invalid device node): /dev/${char_dev}"
+		bad_msg "Pausing for 10 seconds..."
+		sleep 10
+	fi
+done
+
+sanity_check_root() {
+	# This function performs a sanity check on the /newroot mount -- is it mounted and does it look
+	# like something we can pivot into? Return 0 == yes, return 1 == no, return 2 == sanity check fail.
+	# This will set MOUNTED_ROOT_FS to "1" on success, which is used in other parts of the linuxrc
+	# script to detect that we can continue. Specify "postmount" as an argument for a more intense
+	# post-dev check.
+	local missing=""
+	if mountpoint -q /newroot; then
+		[ ! -d  /newroot/dev ] && missing="/dev"
+		[ ! -x /newroot/sbin/init ] && missing="/sbin/init"
+		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/console ] && missing="/dev/console"
+		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/null ] && missing="/dev/null"
+		if [ -n "$missing" ]; then
+			echo
+			bad_msg "ERROR: your root filesystem appears invalid -- missing: ${missing}"
+			bad_msg "====================================================================="
+			return 2
+		else
+			MOUNTED_ROOT_FS=1
+			return 0
+		fi
+	fi
+	return 1
+}
+
+mount_devfs () {
+	local devfs=tmpfs
+	if grep -qs devtmpfs /proc/filesystems ; then
+		devfs=devtmpfs
+	fi
+
+	# Options copied from /etc/init.d/udev-mount, should probably be kept in sync
+	if ! fs_type_in_use devtmpfs; then
+		mount -t $devfs -o "exec,nosuid,mode=0755,size=10M" udev /dev || bad_msg "Failed to mount /dev as ${devfs}"
+	fi
+
+	# http://git.busybox.net/busybox/plain/docs/mdev.txt
+	if ! fs_type_in_use devpts; then
+		mkdir -m 0755 /dev/pts
+		mount -t devpts -o gid=5,mode=0620 devpts /dev/pts  || bad_msg "Failed to mount /dev/pts"
+	fi
+}
+
+good_msg() {
+	echo -e "${GOOD}>>${NORMAL}${BOLD} $* ${NORMAL}"
+}
+
+bad_msg() {
+	echo -e "${BAD}!!${NORMAL}${BOLD} $* ${NORMAL}"
+}
+
+warn_msg() {
+	msg_string=$1
+	msg_string="${msg_string:-...}"
+	[ "$2" != 1 ] && echo -e "${WARN}**${NORMAL}${BOLD} ${msg_string} ${NORMAL}"
+}
+

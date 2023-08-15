@@ -1,0 +1,84 @@
+# modules.autoload: This file defines logical groups of modules, and which modules should be
+#                   auto-loaded by the initramfs at boot-time. Note that this file has a different
+#                   purpose than modules.copy. We sometimes want to be more specific here. It's
+#                   also possible that we may *not* want to auto-load modules at boot, even
+#                   if they are included on the initramfs (such as, maybe, bluetooth.) In this
+#                   case, a section can be omitted from this file. We may also want to *only* load
+#                   the modules which will actually result in hardware being detected, and leave
+#                   out any dependent modules.
+#
+#                   Also, unlike modules.autoload, we don't *have* to use paths here, since it's
+#                   possible just to load a module by name. Here are the rules:
+#
+#                   If a path ends in "/*", it means load all .ko modules in this path.
+#                   If a path ends in "/**", it means to recursively load all .ko modules in the path.
+#                   If a path ends in ".ko", it's assumed to be a glob or a literal path.
+#                   If a path has no path information such as "/" in it, and doesn't end in ".ko", it's
+#                   a module name.
+#
+#                   Our initramfs will receive a very simplified version of this list. This file
+#                   format is to make things easier for us.
+
+
+[nvme]
+nvme
+
+[raid]
+dm-mod
+dm-snapshot
+dm-mirror
+dm-raid
+dm-crypt
+raid0
+raid1
+raid456
+raid10
+linear
+multipath
+
+[pata]
+kernel/drivers/ata/pata_*.ko
+
+[sata]
+kernel/drivers/ata/sata_*.ko
+
+[scsi]
+kernel/drivers/scsi/**
+
+[iscsi]
+kernel/drivers/scsi/*iscsi*
+kernel/drivers/target/iscsi/**
+
+[usb]
+kernel/drivers/usb/host/**
+kernel/drivers/usb/typec/**
+
+[usb-storage]
+kernel/drivers/usb/storage/*.ko
+
+[usb-input]
+kernel/drivers/hid/**
+
+[filesystems]
+loop
+ext4
+btrfs
+f2fs
+reiserfs
+jfs
+nfs
+xfs
+fuse
+squashfs
+overlay
+hfsplus
+isofs
+udf
+loop
+nls_utf8
+
+[virtio]
+kernel/drivers/virtio/**
+kernel/drivers/net/virtio_net.ko
+kernel/net/vmw_vsock/**
+kernel/fs/fuse/virtiofs.ko
