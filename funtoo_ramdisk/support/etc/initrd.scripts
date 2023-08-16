@@ -50,7 +50,7 @@ determine_root() {
 	case "${REAL_ROOT}" in
 		LABEL=*|UUID=*)
 			good_msg "Looking for root device ${REAL_ROOT}"
-			ROOT_DEV=$(blkid -o device -l -t "${REAL_ROOT}")
+			ROOT_DEV=$(/sbin/blkid -o device -l -t "${REAL_ROOT}")
 			if [ $? -eq 0 ] && [ -b "${ROOT_DEV}" ]; then
 				good_msg "Found associated block device ${ROOT_DEV}"
 				REAL_ROOT="${ROOT_DEV}"
