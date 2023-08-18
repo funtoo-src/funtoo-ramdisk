@@ -25,11 +25,16 @@ from_git = False
 f_path = os.path.dirname(os.path.realpath(__file__))
 proj_path = os.path.normpath(os.path.join(f_path, "../.git"))
 if os.path.isdir(proj_path):
-	mod_path = os.path.normpath(os.path.join(proj_path, "../funtoo_ramdisk"))
-	if os.path.exists(mod_path):
-		from_git = True
-		sys.path.insert(0, mod_path)
-		support_root = os.path.join(mod_path, "support")
+	base_path = os.path.normpath(os.path.join(proj_path, "../"))
+	mod_path = os.path.join(base_path, "funtoo_ramdisk")
+	support_path = os.path.join(mod_path, "support")
+	if not os.path.exists(mod_path):
+		raise FileNotFoundError(f"from_git: Did not find {mod_path} where I expected to find it.")
+	if not os.path.exists(support_path):
+		raise FileNotFoundError(f"from_git: Did not find {support_path} where I expected to find it.")
+	from_git = True
+	sys.path.insert(0, base_path)
+	support_root = os.path.join(mod_path, "support")
 
 if not from_git:
 	# import the module just to use it to get the path to the files.
@@ -62,7 +67,7 @@ else:
 handler = RichHandler(show_path=False, show_time=False)
 log.addHandler(handler)
 if args.debug:
-	log.warning("DEBUG enabled")
+	log.info("DEBUG enabled.")
 if from_git:
 	log.warning(f"Running from git repository {os.path.dirname(proj_path)}")
 

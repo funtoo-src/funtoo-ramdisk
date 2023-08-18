@@ -25,6 +25,25 @@ class ModuleScanner:
 		self.kernel_version = kernel_version
 		self.log = logging.getLogger("ramdisk")
 
+		self.builtins_by_name = {}
+		self.builtins_by_path = set()
+
+		# Create a list of built-in modules. Use this list in our sanity checks. If a module is built-in to the
+		# kernel, we won't be able to copy it to the initramfs, and that's OK. It's still "there" in spirit.
+		# Due to our use of os.walk() and globs for finding modules most of the time, this only will surface as
+		# a real-world issue when we are literally specifying a module we want to autoload, like "xfs", which
+		# is built-in. We want to fail if the module isn't on the initramfs -- and if it's not also built-in.
+
+		builtin_path = os.path.join(self.root, "lib/modules", self.kernel_version, "modules.builtin")
+		with open(builtin_path, "r") as bif:
+			for line in bif.readlines():
+				line = line.strip()
+				if not line:
+					continue
+				builtin_mod_name = os.path.basename(line)[:-3]  # strip .ko
+				self.builtins_by_name[builtin_mod_name] = line
+				self.builtins_by_path.add(line)
+
 	def get_module_deps_by_name(self, mod: str) -> set:
 		"""
 		Given a "mod", which is a name of a module like "ext4", return a list of full paths of this module and any dependent modules
@@ -209,11 +228,15 @@ class ModuleScanner:
 				if "/" not in line and not line.endswith(".ko"):
 					# We are directly-specifying a module name like "ext4". Make sure it was copied:
 					if line not in copy_output["by_name"]:
-						raise ValueError(f"modules.autoload, line {lineno}: Specified kernel module {line} was not previously selected for the initramfs.")
-					out_dict[section] += [ line ]
+						if line in self.builtins_by_name:
+							self.log.debug(f"Module {line} referenced in modules.autoload is built-in to the kernel.")
+						else:
+							raise ValueError(f"modules.autoload, line {lineno}: Specified kernel module {line} was not copied to initramfs and is not built-in to kernel.")
+					else:
+						out_dict[section] += [line]
 				elif line.endswith("/**"):
-					# Recursively scan the specified directory on the initramfs for all matching already-copied modules, and set these to
-					# autoload:
+					# Recursively scan the specified directory on the initramfs for all matching
+					# already-copied modules, and set these to autoload:
 					found_mods = self.recursively_get_module_paths(line[:-3], initramfs_root)
 				else:
 					# Scan the initramfs and match glob against all already-copied modules, and set these to autoload:
@@ -235,7 +258,7 @@ class ModuleScanner:
 			copy_out,
 			initramfs_root=initial_ramdisk.root
 		)
-		# Write out category files which will be used by the auto-loader on the initramfs
+		# Write out category files which will be used by the autoloader on the initramfs
 		os.makedirs(os.path.join(initial_ramdisk.root, "etc/modules"), exist_ok=True)
 		for mod_cat, mod_names in auto_out.items():
 			with open(os.path.join(initial_ramdisk.root, "etc/modules", mod_cat), "w") as f:
