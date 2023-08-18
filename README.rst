@@ -40,7 +40,7 @@ or LiveUSB booting.
 
 Why not? Because one of the main design goals of this project is to create a
 very elegant and easy-to-understand initramfs whose core logic is not cluttered
-with tons of questionable features. To start from a clean slate, we are starting
+with tons of complicated features. To start from a clean slate, we are starting
 from very minimal functionality and then will very carefully add back various
 features while keeping the code clean, simple, elegant and effective.
 
