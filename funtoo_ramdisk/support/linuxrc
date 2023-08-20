@@ -115,12 +115,12 @@ then
 	done
 fi
 
-[ -n "$DEBUG" ] && good_msg 'Starting debug shell as requested by "debug" option.' && run_shell
+[ -n "$DEBUG" ] && run_shell good 'Starting debug shell as requested by "debug" option.'
 
 while [ "${MOUNTED_ROOT_FS}" != "1" ]; do
 	determine_root && mount_real_root && sanity_check_root && break
 	# If we fail, prompt user for root block device.
-	run_shell
+	run_shell bad "I was unable to find ${REAL_ROOT}."
 done
 
 echo '6' > /proc/sys/kernel/printk
@@ -134,14 +134,13 @@ do
 	if mountpoint -q $fs; then
 		if ! mount --move $fs "${CHROOT}"$fs
 		then
-			umount $fs || bad_msg "ERROR: Failed to move and unmount the ramdisk $fs!"
+			umount $fs || run_shell bad "ERROR: Failed to move and unmount the ramdisk $fs!"
 		fi
 	fi
 done
 
-sanity_check_root postmount || run_shell
+sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
 
 cd / && exec /sbin/switch_root -c "/dev/console" "${CHROOT}" "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
 
-bad_msg "Something prevented us from switching into root filesystem."
-run_shell
+run_shell bad "Something prevented us from switching into root filesystem."
