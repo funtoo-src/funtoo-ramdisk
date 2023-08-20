@@ -14,8 +14,6 @@ mount -o remount,rw / >/dev/null 2>&1
 # Set up symlinks
 /bin/busybox --install -s
 
-echo '0' > /proc/sys/kernel/printk
-
 mkdir -p /newroot
 CHROOT=/newroot
 
@@ -104,8 +102,11 @@ fi
 
 if [ "${MOUNTED_ROOT_FS}" != '1' ] && [ "${DETECT}" != '0' ]
 then
+	# Reduce verbosity, to avoid getting spammed with nonsense:
+	echo '0' > /proc/sys/kernel/printk
 	good_msg "Starting modules scanning..."
-	for modules in nvme sata scsi filesystems usb usb-storage usb-input
+	# TODO: These groups of modules should not be hard-coded.
+	for modules in nvme ata scsi filesystems usb usb-storage usb-input
 	do
 		modules_scan ${modules}
 		mdev -s || bad_msg "mdev -s failed"
@@ -115,6 +116,7 @@ then
 	done
 fi
 
+echo '6' > /proc/sys/kernel/printk
 [ -n "$DEBUG" ] && run_shell good 'Starting debug shell as requested by "debug" option.'
 
 while [ "${MOUNTED_ROOT_FS}" != "1" ]; do
@@ -122,8 +124,6 @@ while [ "${MOUNTED_ROOT_FS}" != "1" ]; do
 	# If we fail, prompt user for root block device.
 	run_shell bad "I was unable to find ${REAL_ROOT}."
 done
-
-echo '6' > /proc/sys/kernel/printk
 
 for dirp in proc sys run; do
 	[ ! -d "${CHROOT}/${dirp}" ] && mkdir -p "${CHROOT}/${dirp}" 2>/dev/null

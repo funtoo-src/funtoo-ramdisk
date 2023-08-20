@@ -36,7 +36,6 @@ raid10
 linear
 multipath
 
-
 [ata]
 kernel/drivers/ata/**
 
