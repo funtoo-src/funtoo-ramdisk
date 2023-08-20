@@ -33,6 +33,9 @@ do
 		init_opts=*)
 			INIT_OPTS=${x#*=}
 		;;
+		shell)
+			DEBUG_SHELL='yes'
+		;;
 		debug)
 			DEBUG='yes'
 		;;
@@ -57,6 +60,12 @@ do
 	esac
 done
 
+if [ "$DEBUG" = "yes" ]; then
+	echo '6' > /proc/sys/kernel/printk
+else
+	echo '0' > /proc/sys/kernel/printk
+fi
+
 if [ -z "${REAL_ROOT}" ] && [  "${FAKE_ROOT}" != "/dev/ram0" ]
 then
 	REAL_ROOT="${FAKE_ROOT}"
@@ -80,9 +89,9 @@ test -f /proc/sys/kernel/hotplug && echo /sbin/mdev > /proc/sys/kernel/hotplug
 # if the root filesystem type was specified, load this FS module first:
 if [ ! -b "${REAL_ROOT}" ] && [ "${ROOTFSTYPE}" != "auto" ]; then
 	good_msg "Loading ${ROOTFSTYPE} filesystem..."
-	if ! modprobe "$ROOTFSTYPE"; then
-		bad_msg "Unable to load root filesystem module $ROOTFSTYPE"
-	fi
+	do_modprobe "$ROOTFSTYPE"
+else
+	modules_scan filesystems
 fi
 
 # If "magic" list of modules was specified, use this and see if this gets us the
@@ -102,22 +111,18 @@ fi
 
 if [ "${MOUNTED_ROOT_FS}" != '1' ] && [ "${DETECT}" != '0' ]
 then
-	# Reduce verbosity, to avoid getting spammed with nonsense:
-	echo '0' > /proc/sys/kernel/printk
 	good_msg "Starting modules scanning..."
 	# TODO: These groups of modules should not be hard-coded.
-	for modules in nvme ata scsi filesystems usb usb-storage usb-input
+	for modules in nvme ata scsi usb usb-storage
 	do
 		modules_scan ${modules}
 		mdev -s || bad_msg "mdev -s failed"
-		# The "quick" boot option tells the linuxrc to try to short-circuit module loading if we
-		# appear successful:
+		# The "quick" boot option: try to short-circuit module loading if we appear successful:
 		[ -n "$QUICK" ] && determine_root && mount_real_root && sanity_check_root && break
 	done
 fi
 
-echo '6' > /proc/sys/kernel/printk
-[ -n "$DEBUG" ] && run_shell good 'Starting debug shell as requested by "debug" option.'
+[ "$DEBUG_SHELL" = "yes" ] && run_shell good 'Debug shell requested, starting prior to mounting root fs'
 
 while [ "${MOUNTED_ROOT_FS}" != "1" ]; do
 	determine_root && mount_real_root && sanity_check_root && break
@@ -140,6 +145,8 @@ do
 done
 
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
+
+[ "$DEBUG" = "no" ] && echo '6' > /proc/sys/kernel/printk
 
 cd / && exec /sbin/switch_root -c "/dev/console" "${CHROOT}" "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
 

@@ -6,22 +6,30 @@ backup() {
 	echo -ne "\033[0G\033[0K"
 }
 
+debug_msg() {
+	[ "$DEBUG" = "yes" ] && echo "<7>funtoo-ramdisk: $*" > /dev/kmsg
+}
+
 do_modprobe() {
 	for x in ${*}; do
 		echo -ne "${BOLD}   ::${NORMAL} Loading ${x}..."
-		modprobe -q "${x}" > /dev/null 2>&1
-		backup
-		echo -ne "${NORMAL}"
+		debug_msg do_modprobe "loading ${x}..."
+		if /sbin/modprobe -q -s "${x}" > /dev/null 2>&1; then
+			backup
+		else
+			bad_msg "ERROR loading module ${x}"
+		fi
 	done
-
 }
 
 modules_scan() {
-	[ -e "/etc/modules/${1}.done" ] && return
+	[ -e "/etc/modules/${1}.done" ] && debug_msg modules_scan "$1 already done" && return
 	local MODS
 	[ -f "/etc/modules/${1}" ] && MODS="$(cat /etc/modules/${1})"
+	debug_msg modules_scan "$1 start"
 	do_modprobe $MODS
 	touch /etc/modules/"${1}.done"
+	debug_msg modules_scan "$1 end"
 }
 
 mount_sysfs() {
@@ -35,8 +43,6 @@ run_shell() {
 	[ "$1" = "bad" ] && shift && bad_msg "$@"
 	good_msg "Starting rescue shell:"
 	modules_scan usb usb-input
-	# Restore verbosity for debugging purposes:
-	echo '6' > /proc/sys/kernel/printk
 	/bin/ash
 }
 
@@ -135,10 +141,12 @@ mount_devfs () {
 
 good_msg() {
 	echo -e "${GOOD}>>${NORMAL}${BOLD} $* ${NORMAL}"
+	debug_msg good_msg "$@"
 }
 
 bad_msg() {
 	echo -e "${BAD}!!${NORMAL}${BOLD} $* ${NORMAL}"
+	debug_msg bad_msg "$@"
 }
 
 warn_msg() {

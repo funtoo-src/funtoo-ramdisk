@@ -58,6 +58,8 @@ class InitialRamDisk:
 			os.makedirs(os.path.join(self.root, dir_name), exist_ok=True)
 		os.makedirs(os.path.join(self.root, "lib"), exist_ok=True)
 		os.symlink("lib", os.path.join(self.root, "lib64"))
+		os.symlink("../lib", os.path.join(self.root, "usr/lib"))
+		os.symlink("../lib", os.path.join(self.root, "usr/lib64"))
 
 	def create_fstab(self):
 		with open(os.path.join(self.root, "etc/fstab"), "w") as f:
@@ -76,6 +78,7 @@ class InitialRamDisk:
 
 	def setup_busybox(self):
 		self.copy_binary("/bin/busybox")
+		self.copy_binary("/sbin/modprobe")
 		# Make sure these applets exist even before we tell busybox to create all the applets on initramfs:
 		for applet in [
 			"ash",
