@@ -10,6 +10,16 @@ debug_msg() {
 	[ "$DEBUG" = "yes" ] && echo "<7>funtoo-ramdisk: $*" > /dev/kmsg
 }
 
+udev_setup() {
+	good_msg 'Activating mdev'
+	touch /dev/mdev.seq
+	[ -f /proc/sys/kernel/hotplug ] && echo /sbin/mdev > /proc/sys/kernel/hotplug
+}
+
+udev_scan() {
+	mdev -s || bad_msg "mdev device scan failed"
+}
+
 do_modprobe() {
 	for x in ${*}; do
 		echo -ne "${BOLD}   ::${NORMAL} Loading ${x}..."
@@ -28,6 +38,7 @@ modules_scan() {
 	[ -f "/etc/modules/${1}" ] && MODS="$(cat /etc/modules/${1})"
 	debug_msg modules_scan "$1 start"
 	do_modprobe $MODS
+	udev_scan
 	touch /etc/modules/"${1}.done"
 	debug_msg modules_scan "$1 end"
 }
@@ -41,8 +52,8 @@ mount_sysfs() {
 run_shell() {
 	[ "$1" = "good" ] && shift && good_msg "$@"
 	[ "$1" = "bad" ] && shift && bad_msg "$@"
-	good_msg "Starting rescue shell:"
 	modules_scan usb usb-input
+	good_msg "Starting rescue shell."
 	/bin/ash
 }
 

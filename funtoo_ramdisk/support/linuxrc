@@ -77,14 +77,7 @@ mount_devfs
 # Mount sysfs
 mount_sysfs
 
-# Initialize mdev
-good_msg 'Activating mdev'
-
-# Serialize hotplug events
-touch /dev/mdev.seq
-
-# Setup hotplugging for firmware loading if hotplug available
-test -f /proc/sys/kernel/hotplug && echo /sbin/mdev > /proc/sys/kernel/hotplug
+udev_setup
 
 # if the root filesystem type was specified, load this FS module first:
 if [ ! -b "${REAL_ROOT}" ] && [ "${ROOTFSTYPE}" != "auto" ]; then
@@ -99,9 +92,9 @@ fi
 if [ "$MAGIC" = "1" ]; then
 	good_msg "Loading magic modules..."
 	do_modprobe $MAGIC
+	udev_scan
 fi
 
-mdev -s || bad_msg "mdev -s failed"
 
 # This is here to try the "MAGIC" modules and see if they did the trick.
 # If so, we can skip the modules scan, below:
@@ -116,7 +109,6 @@ then
 	for modules in nvme ata scsi usb usb-storage
 	do
 		modules_scan ${modules}
-		mdev -s || bad_msg "mdev -s failed"
 		# The "quick" boot option: try to short-circuit module loading if we appear successful:
 		[ -n "$QUICK" ] && determine_root && mount_real_root && sanity_check_root && break
 	done
