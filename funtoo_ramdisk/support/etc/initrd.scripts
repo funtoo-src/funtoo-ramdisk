@@ -85,15 +85,6 @@ mount_real_root() {
 	return 1
 }
 
-
-for char_dev in console null; do
-	if [ ! -c "${CHROOT}/dev/${char_dev}" ]; then
-		bad_msg "ERROR: your root filesystem is missing (or invalid device node): /dev/${char_dev}"
-		bad_msg "Pausing for 10 seconds..."
-		sleep 10
-	fi
-done
-
 sanity_check_root() {
 	# This function performs a sanity check on the /newroot mount -- is it mounted and does it look
 	# like something we can pivot into? Return 0 == yes, return 1 == no, return 2 == sanity check fail.
