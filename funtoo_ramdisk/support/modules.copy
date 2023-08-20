@@ -8,11 +8,8 @@ kernel/drivers/nvme/**
 [raid]
 kernel/drivers/md/**
 
-[pata]
-kernel/drivers/ata/pata_*.ko
-
-[sata]
-kernel/drivers/ata/sata_*.ko
+[ata]
+kernel/drivers/ata/**
 
 [scsi]
 kernel/drivers/scsi/**

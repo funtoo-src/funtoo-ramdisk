@@ -36,11 +36,9 @@ raid10
 linear
 multipath
 
-[pata]
-kernel/drivers/ata/pata_*.ko
 
-[sata]
-kernel/drivers/ata/sata_*.ko
+[ata]
+kernel/drivers/ata/**
 
 [scsi]
 kernel/drivers/scsi/**
