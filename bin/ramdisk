@@ -9,9 +9,6 @@ import logging
 import tempfile
 from rich.logging import RichHandler
 
-from funtoo_ramdisk.config_files import ConfigFstab
-
-
 def parse_args():
 	ap = argparse.ArgumentParser()
 	for arg, kwargs in CLI_ARGS.items():
@@ -46,6 +43,8 @@ if not from_git:
 	support_root = os.path.normpath(os.path.join(funtoo_ramdisk.__file__, "../support"))
 
 from funtoo_ramdisk.initramfs import InitialRamDisk
+from funtoo_ramdisk.config_files import ConfigFstab
+
 try:
 	from funtoo_ramdisk.version import __version__
 except:
