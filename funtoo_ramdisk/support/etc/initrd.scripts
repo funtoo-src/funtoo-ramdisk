@@ -2,6 +2,50 @@
 
 . /etc/initrd.defaults
 
+parse_cmdline() {
+	for x in $(cat /proc/cmdline)
+	do
+		case "${x}" in
+			real_root=*)
+				REAL_ROOT=${x#*=}
+			;;
+			root=*)
+				FAKE_ROOT=${x#*=}
+			;;
+			real_init=*)
+				REAL_INIT=${x#*=}
+			;;
+			init_opts=*)
+				INIT_OPTS=${x#*=}
+			;;
+			shell)
+				DEBUG_SHELL='yes'
+			;;
+			debug)
+				DEBUG='yes'
+			;;
+			quick)
+				# enhanced module loading:
+				QUICK='yes'
+			;;
+			slow)
+				QUICK=''
+			;;
+			magic=*)
+				# specify magic list of modules to try, comma separated:
+				MAGIC="${x#*=}"
+				MAGIC="${x/,/ }"
+			;;
+			real_rootflags=*)
+				REAL_ROOTFLAGS=${x#*=}
+			;;
+			rootfstype=*)
+				ROOTFSTYPE=${x#*=}
+			;;
+		esac
+	done
+}
+
 backup() {
 	echo -ne "\033[0G\033[0K"
 }
@@ -112,14 +156,20 @@ sanity_check_root() {
 	# post-dev check.
 	local missing=""
 	if mountpoint -q /newroot; then
-		[ ! -d  /newroot/dev ] && missing="/dev"
-		[ ! -x /newroot/sbin/init ] && missing="/sbin/init"
-		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/console ] && missing="/dev/console"
-		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/null ] && missing="/dev/null"
+		[ ! -d  /newroot/dev ] && missing="$missing /dev"
+		[ ! -x /newroot/sbin/init ] && missing="$missing /sbin/init"
+		for dirp in proc sys run; do
+			[ ! -d "/newroot/${dirp}" ] && missing="$missing /${dirp}"
+		done
+		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/console ] && missing="$missing /dev/console"
+		[ "$1" = "postmount" ] && [ ! -c /newroot/dev/null ] && missing="$missing /dev/null"
 		if [ -n "$missing" ]; then
 			echo
-			bad_msg "ERROR: your root filesystem appears invalid -- missing: ${missing}"
-			bad_msg "====================================================================="
+			bad_msg "ERROR: your root filesystem appears invalid -- missing:"
+			bad_msg "======================================================="
+			for bad in $missing; do
+				bad_msg $bad
+			done
 			return 2
 		else
 			MOUNTED_ROOT_FS=1

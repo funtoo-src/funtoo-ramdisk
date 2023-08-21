@@ -15,50 +15,8 @@ mount -o remount,rw / >/dev/null 2>&1
 /bin/busybox --install -s
 
 mkdir -p /newroot
-CHROOT=/newroot
 
-mkdir -p /etc/cmdline /etc/modprobe.d
-for x in $(cat /proc/cmdline)
-do
-	case "${x}" in
-		real_root=*)
-			REAL_ROOT=${x#*=}
-		;;
-		root=*)
-			FAKE_ROOT=${x#*=}
-		;;
-		real_init=*)
-			REAL_INIT=${x#*=}
-		;;
-		init_opts=*)
-			INIT_OPTS=${x#*=}
-		;;
-		shell)
-			DEBUG_SHELL='yes'
-		;;
-		debug)
-			DEBUG='yes'
-		;;
-		quick)
-			# enhanced module loading:
-			QUICK='yes'
-		;;
-		slow)
-			QUICK=''
-		;;
-		magic=*)
-			# specify magic list of modules to try, comma separated:
-			MAGIC="${x#*=}"
-			MAGIC="${x/,/ }"
-		;;
-		real_rootflags=*)
-			REAL_ROOTFLAGS=${x#*=}
-		;;
-		rootfstype=*)
-			ROOTFSTYPE=${x#*=}
-		;;
-	esac
-done
+parse_cmdline
 
 if [ "$DEBUG" = "yes" ]; then
 	echo '6' > /proc/sys/kernel/printk
@@ -71,10 +29,8 @@ then
 	REAL_ROOT="${FAKE_ROOT}"
 fi
 
-# Mount devfs
 mount_devfs
 
-# Mount sysfs
 mount_sysfs
 
 udev_setup
@@ -121,16 +77,12 @@ while [ "${MOUNTED_ROOT_FS}" != "1" ]; do
 	run_shell bad "I was unable to find ${REAL_ROOT}."
 done
 
-for dirp in proc sys run; do
-	[ ! -d "${CHROOT}/${dirp}" ] && mkdir -p "${CHROOT}/${dirp}" 2>/dev/null
-done
-
 [ "$DEBUG" = "no" ] && echo '6' > /proc/sys/kernel/printk
 
 for fs in /dev /sys /proc
 do
 	if mountpoint -q $fs; then
-		if ! mount --move $fs "${CHROOT}"$fs
+		if ! mount --move $fs /newroot/$fs
 		then
 			umount $fs || run_shell bad "ERROR: Failed to move and unmount the ramdisk $fs!"
 		fi
@@ -139,6 +91,6 @@ done
 
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
 
-cd / && exec /sbin/switch_root -c "/dev/console" "${CHROOT}" "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
+cd / && exec /sbin/switch_root -c "/dev/console" /newroot "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
 
 run_shell bad "Something prevented us from switching into root filesystem."
