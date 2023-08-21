@@ -92,7 +92,6 @@ fi
 if [ "$MAGIC" = "1" ]; then
 	good_msg "Loading magic modules..."
 	do_modprobe $MAGIC
-	udev_scan
 fi
 
 
