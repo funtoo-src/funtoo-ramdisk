@@ -125,6 +125,8 @@ for dirp in proc sys run; do
 	[ ! -d "${CHROOT}/${dirp}" ] && mkdir -p "${CHROOT}/${dirp}" 2>/dev/null
 done
 
+[ "$DEBUG" = "no" ] && echo '6' > /proc/sys/kernel/printk
+
 for fs in /dev /sys /proc
 do
 	if mountpoint -q $fs; then
@@ -136,8 +138,6 @@ do
 done
 
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
-
-[ "$DEBUG" = "no" ] && echo '6' > /proc/sys/kernel/printk
 
 cd / && exec /sbin/switch_root -c "/dev/console" "${CHROOT}" "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
 
