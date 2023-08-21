@@ -2,10 +2,14 @@
 import argparse
 import asyncio
 import os
+import re
+import subprocess
 import sys
 import logging
 import tempfile
 from rich.logging import RichHandler
+
+from funtoo_ramdisk.config_files import ConfigFstab
 
 
 def parse_args():
@@ -76,6 +80,36 @@ async def main_thread():
 	output_initramfs = os.path.normpath(args.destination)
 	if os.path.exists(output_initramfs) and not args.force:
 		raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
+	fstab = ConfigFstab()
+	root_entry = fstab.get_line_by_mount("/")
+	if re.match("^/dev/sd.*", root_entry[0]):
+		cmd = f"/sbin/blkid -s UUID -o value {root_entry[0]}"
+		status, uuid = subprocess.getstatusoutput(cmd)
+		if status != 0:
+			raise ValueError(f"command: '{cmd}' failed with exit code {status}.")
+		uuid = uuid.strip()
+		if not uuid:
+			raise ValueError(f"command: '{cmd}' was unable to give us a UUID.")
+		log.warning(f"""Detected root device {root_entry[0]}, which could be a problem if you have more
+than one ATA/SCSI disk. Since /dev/sd* device nodes are not consistently 
+assigned, the initramfs could see this as a different device. Please do the the
+following:
+
+1. In /etc/fstab, change your root entry from:
+
+   {'    '.join(root_entry)} 
+   
+   to:
+   
+   UUID={uuid}    {'    '.join(root_entry[1:])}
+
+2. *Re-run* ego boot update so that GRUB will look for your root block device
+    by UUID.
+
+3. This problem should now be resolved, since now you are referring to the root
+   block device using a UUID which will not change. Now, go ahead and try to
+   create your ramdisk again.
+	""")
 	os.makedirs(os.path.dirname(output_initramfs), exist_ok=True)
 	if args.kernel is None:
 		log.info("No kernel specified, so going to try to use /usr/src/linux symlink.")

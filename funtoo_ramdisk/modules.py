@@ -12,21 +12,41 @@ from collections import defaultdict
 class ModuleScanner:
 
 	"""
-	This class exists to scan for kernel modules, and also help us to determine dependencies of kernel modules, so we grab all the
-	necessary ones for an initramfs.
+	This class exists to scan for kernel modules, and also help us to determine dependencies of kernel modules,
+	so we grab all the necessary ones for an initramfs.
 
-	In the constructor, ``root`` is the root filesystem -- which defaults to "/". The kernel modules we look at are assumed to exist at
-	``os.path.join(self.root, "lib/modules", self.kernel_version)``. Any sub-paths we look at are assumed to be relative to this
-	path.
+	In the constructor, ``root`` is the root filesystem -- which defaults to "/". The kernel modules we look at
+	are assumed to exist at ``os.path.join(self.root, "lib/modules", self.kernel_version)``. Any sub-paths we
+	look at are assumed to be relative to this path.
+
+	``self.copy_config``: A dictionary, which contains three key-value pairs: "sections", which is a defaultdict
+	containing K:V pairs of each section name (string) and the value being a set of all absolute file path
+	to all associated modules included in the section (including dependencies of these modules.). In addition,
+	a dict key-value pair: "by_name", which will map each module name (i.e. "ext4") to the absolute path of
+	that module. The "names_in_sections" is used to map kernel module short names ("ext4") to the set of sections
+	it is in.
+
+	Remember (or understand) that a module can be included in more than one section. "by_name" is the global
+	list of modules across all sections. It should also not be considered authoritative. That is, we may mask
+	out stuff in "by_name". Use "names_in_sections" as the authoritative list of modules for each section.
+
+	``self.copy_config_mask`` contains a set of all module short-names that are masked out in each section.
+	We record this because we have to grab all the masks and process them at the end.
 	"""
 
-	def __init__(self, kernel_version, root="/" ):
+	def __init__(self, kernel_version, root="/"):
 		self.root = root
 		self.kernel_version = kernel_version
 		self.log = logging.getLogger("ramdisk")
 
 		self.builtins_by_name = {}
 		self.builtins_by_path = set()
+		self.copy_config = {
+			"sections": defaultdict(set),
+			"by_name": {},
+			"names_in_sections": defaultdict(set)
+		}
+		self.copy_config_mask = defaultdict(set)
 
 		# Create a list of built-in modules. Use this list in our sanity checks. If a module is built-in to the
 		# kernel, we won't be able to copy it to the initramfs, and that's OK. It's still "there" in spirit.
@@ -102,7 +122,7 @@ class ModuleScanner:
 			out_set |= self.get_module_deps_by_name(module_name)
 		return out_set
 
-	def process_copy_line(self, entry : str) -> set:
+	def process_copy_line(self, section, entry : str) -> set:
 		"""
 		This method processes a single line in a ``modules.copy`` file. We support two formats::
 
@@ -122,13 +142,17 @@ class ModuleScanner:
 		:return:
 		"""
 		out_set = set()
-		if entry.endswith("/**"):
+		if entry.startswith("-"):
+			# This is a mask entry, which gets applied later:
+			self.copy_config_mask[section].add(entry[1:].strip())
+			self.log.debug(f"Module {entry[1:]} mask recorded for {section} section.")
+		elif entry.endswith("/**"):
 			out_set |= self.recursively_get_module_paths(entry[:-3])
 		else:
 			out_set |= self.glob_walk_module_paths(entry)
 		return out_set
 
-	def process_copy_config(self, config_file) -> dict:
+	def process_copy_config(self, config_file):
 		"""
 		This method processes a ``modules.copy`` file which has a simplified ini-style format:
 
@@ -142,16 +166,7 @@ class ModuleScanner:
 		This file will be scanned, and a bunch of information will be returned (see ``return``, below.)
 
 		:param config_file: the file to read.
-		:return: Return a dictionary, which contains two key-value pairs: "sections", which is a defaultdict
-		         containing K:V pairs of each section name (string) and the value being a set of all absolute
-		         file paths to all associated modules included in the section (including dependencies of
-		         these modules.). In addition, a dict key-value pair: "by_name", which will map each module
-		         name (i.e. "ext4") to the absolute path of that module.
 		"""
-		out_dict = {
-			"sections": defaultdict(set),
-			"by_name": {}
-		}
 		section = None
 		with open(config_file, "r") as cfg:
 			for line in cfg.read().split("\n"):
@@ -163,14 +178,25 @@ class ModuleScanner:
 					continue
 				elif line.startswith("#"):
 					continue
-				new_items = self.process_copy_line(line)
-				out_dict["sections"][section] |= new_items
+				new_items = self.process_copy_line(section, line)
+				self.copy_config["sections"][section] |= new_items
 				for mod_path in new_items:
-					mod_name = os.path.basename(mod_path)[:-3] # strip .ko
-					out_dict["by_name"][mod_name] = mod_path
-		return out_dict
+					mod_name = os.path.basename(mod_path)[:-3]  # strip .ko
+					self.copy_config["by_name"][mod_name] = mod_path
+					self.copy_config["names_in_sections"][mod_name].add(section)
 
-	def copy_modules_to_initramfs(self, copy_output, initramfs_root, strip_debug=True):
+		# Process masks. Modules masked from existence will not be purged from ``self.copy_config["by_name"]``, though,
+		# so use it only for lookups and not as authoritative list of all modules to copy or expect on initramfs:
+
+		for section, names_to_mask in self.copy_config_mask.items():
+			if names_to_mask.intersection(self.copy_config["by_name"]):
+				for mod_name in names_to_mask:
+					self.log.debug(f"Removing {mod_name} from {section} due to mask.")
+					mod_path_to_remove = self.copy_config["by_name"][mod_name]
+					self.copy_config["sections"][section] -= {mod_path_to_remove}
+					self.copy_config["names_in_sections"][mod_name] -= {section}
+
+	def copy_modules_to_initramfs(self, initramfs_root, strip_debug=True):
 		out_path = os.path.join(initramfs_root, "lib/modules", self.kernel_version)
 		strip_path = os.path.join(self.root, "lib/modules", self.kernel_version)
 		strip_len = len(strip_path)
@@ -179,7 +205,30 @@ class ModuleScanner:
 		# This will contain things like "kernel/fs/ext4.ko" and we will use it later to filter the ``modules`.order`` file.
 		all_subpaths = set()
 
-		for mod_name, mod_abs in copy_output["by_name"].items():
+		all_mods_names = set()
+
+		for mod_name, sections in self.copy_config["names_in_sections"].items():
+			if not len(sections):
+				# This module was masked out of any sections, so we don't need to copy it:
+				continue
+			else:
+				all_mods_names.add(mod_name)
+
+		all_masked = set()
+		for masked_set in self.copy_config_mask.values():
+			all_masked |= masked_set
+
+		stray_mods = sorted(list(all_mods_names.intersection(all_masked, all_mods_names)))
+		if stray_mods:
+			out = """The following modules were copied to the initramfs, even though they were
+masked in a section. This could indicate a mask that was added to the wrong
+section, or an incomplete masking. Please review modules.copy entries for
+the following masked modules:\n\n"""
+			for mod in stray_mods:
+				out += f"  * {mod}: still included by sections: {' '.join(self.copy_config['names_in_sections'][mod])}\n"
+			self.log.warning(out)
+		for mod_name in all_mods_names:
+			mod_abs = self.copy_config["by_name"][mod_name]
 			# This gets us the "kernel/fs/ext4.ko" path:
 			sub_path = mod_abs[strip_len:].lstrip("/")
 			all_subpaths.add(sub_path)
@@ -187,15 +236,16 @@ class ModuleScanner:
 			os.makedirs(os.path.dirname(mod_abs_dest), exist_ok=True)
 			shutil.copy(mod_abs, mod_abs_dest)
 			mod_count += 1
+
 		if strip_debug:
 			subprocess.getstatusoutput(f'cd "{initramfs_root}" && find -iname "*.ko" -exec strip --strip-debug {{}} \\;')
-		for mod_file in [ "modules.builtin", "modules.builtin.modinfo" ]:
+		for mod_file in ["modules.builtin", "modules.builtin.modinfo"]:
 			mod_path = os.path.join(strip_path, mod_file)
 			if os.path.exists(mod_path):
 				shutil.copy(mod_path, out_path)
 
 		# Copy over modules.order file, but strip out lines for modules that don't exist on the initramfs. This is actually
-		# pretty easy to do:
+		# pretty easy to do, and is an easy way to get a total copied modules count:
 
 		mod_order = os.path.join(strip_path, "modules.order")
 		if os.path.exists(mod_order):
@@ -207,7 +257,7 @@ class ModuleScanner:
 
 		self.log.info(f"{mod_count} kernel modules copied to initramfs.")
 
-	def process_autoload_config(self, config_file, copy_output, initramfs_root):
+	def process_autoload_config(self, config_file, initramfs_root):
 		"""
 
 		"""
@@ -226,14 +276,23 @@ class ModuleScanner:
 				elif line.startswith("#"):
 					continue
 				if "/" not in line and not line.endswith(".ko"):
-					# We are directly-specifying a module name like "ext4". Make sure it was copied:
-					if line not in copy_output["by_name"]:
+					# We are directly-specifying a module name like "ext4". Make sure it was copied. This following conditional
+					# is how to check -- is it in at least one section? (remember, don't use copy_config["by_name"], as it may
+					# include masked (removed) modules:
+					if line in self.copy_config["names_in_sections"] and len(self.copy_config["names_in_sections"][line]):
+						if section not in self.copy_config["names_in_sections"][line]:
+							self.log.warning(f"""modules.autoload, line {lineno}: You are specifying a module to autoload that was added to other sections: 
+
+  {self.copy_config['names_in_sections'][line]}
+  
+You should fix this so that the module you are asking to autoload is also included in the '{section}' section.
+""")
+						out_dict[section] += [line]
+					else:
 						if line in self.builtins_by_name:
 							self.log.debug(f"Module {line} referenced in modules.autoload is built-in to the kernel.")
 						else:
 							raise ValueError(f"modules.autoload, line {lineno}: Specified kernel module {line} was not copied to initramfs and is not built-in to kernel.")
-					else:
-						out_dict[section] += [line]
 				elif line.endswith("/**"):
 					# Recursively scan the specified directory on the initramfs for all matching
 					# already-copied modules, and set these to autoload:
@@ -248,14 +307,13 @@ class ModuleScanner:
 		return out_dict
 
 	def populate_initramfs(self, initial_ramdisk):
-		copy_out = self.process_copy_config(os.path.join(initial_ramdisk.support_root, "modules.copy"))
-		self.copy_modules_to_initramfs(copy_out, initramfs_root=initial_ramdisk.root)
+		self.process_copy_config(os.path.join(initial_ramdisk.support_root, "modules.copy"))
+		self.copy_modules_to_initramfs(initramfs_root=initial_ramdisk.root)
 		retval = os.system(f'/sbin/depmod -b "{initial_ramdisk.root}" {self.kernel_version}')
 		if retval:
 			raise OSError(f"Encountered error {retval} when running depmod.")
 		auto_out = self.process_autoload_config(
 			os.path.join(initial_ramdisk.support_root, "modules.autoload"),
-			copy_out,
 			initramfs_root=initial_ramdisk.root
 		)
 		# Write out category files which will be used by the autoloader on the initramfs

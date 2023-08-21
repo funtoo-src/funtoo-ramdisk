@@ -1,6 +1,8 @@
 # modules.copy: This file defines logical names for certain types of modules, and where they are
 #               located in the kernel source tree. This file is used to grab all modules to copy
 #               to the initramfs. We will also grab all dependencies of these modules.
+#
+#               You must specify to-be-included modules using globs or /** notation.
 
 [nvme]
 kernel/drivers/nvme/**
@@ -13,6 +15,7 @@ kernel/drivers/ata/**
 
 [scsi]
 kernel/drivers/scsi/**
+-scsi_debug
 
 [ethernet]
 kernel/drivers/net/ethernet/**
