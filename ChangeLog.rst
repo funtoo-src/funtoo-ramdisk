@@ -1,3 +1,18 @@
+funtoo-ramdisk 1.0.7
+--------------------
+
+Released on August 22, 2023.
+
+Changes:
+
+* Get rid of ``--modules_root``. Instead, added ``--fs_root`` which
+  specifies where modules *and* the kernel sources will be. This
+  allows the tool to work from an ebuild.
+
+* Improve output and add nice colors. Optimize information to be
+  more useful to users.
+
+
 funtoo-ramdisk 1.0.6
 --------------------
 
