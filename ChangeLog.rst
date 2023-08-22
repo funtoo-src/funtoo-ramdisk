@@ -1,3 +1,52 @@
+funtoo-ramdisk 1.0.5
+--------------------
+
+Released on August 21, 2023.
+
+This is a features/maintenance/bug fix release.
+
+In addition to a bunch of minor fixes and clean-ups, which you can
+view in the git history, the following significant changes were
+made:
+
+* Use kmod ``/sbin/modprobe`` instead of busybox's modprobe. Busybox's modprobe
+  may be fine, but for it to work, we must use busybox's ``depmod`` -- and we're
+  not. We're using ``kmod``'s. So for now, let's just copy the right modprobe
+  over. This fixes an issue where we get invalid symbols when loading modules
+  using busybox ``modprobe``. ``modprobe`` is now resolving deps properly! :)
+
+  At some point, we could make a "toggle" to select kmod/busybox mode. The
+  best time to run ``depmod`` for busybox is probably once the ramdisk first
+  boots, since it doesn't have a "root" option, making it hard to call from our
+  ramdisk script.
+
+* Remove unused control character definitions in ``initrd.defaults``.
+
+* Mitigate an issue where ``ash`` shell could start before all USB keyboards
+  have been detected, resulting in lack of input. We now wait 5 seconds
+  before starting a rescue shell, to give the kernel time to enumerate
+  devices on the USB2/3 bus. This isn't a full fix, but should resolve
+  the problem of ``ash`` starting and not having any way to type, because
+  it didn't connect to your main keyboard.
+
+Try to work around issues related to ATA/SCSI disk enumeration which could
+prevent the root filesystem from being mounted (see FL-11532).
+
+* Detect when a user has a ``/dev/sd*`` root block device and warn them that
+  this is not a good idea, and can cause problems if you have multiple
+  disks. Show them how to fix the problem by switching to UUID.
+
+* Remove scsi_debug module which is evil and if we force-load it, will create
+  a new SCSI device 8MB in size and trigger the problem above for anyone
+  with a SATA disk.
+
+* To implement above feature, added a feature to allow masking of modules in
+  ``modules.copy`` via "-mod_shortname" in a specific section. Also added a
+  lot of sanity checking and warnings. If you happen to mask a module in the
+  wrong section, so it still gets included on the initramfs due to other
+  section(s), we will warn you.
+
+
 funtoo-ramdisk 1.0.4
 --------------------
 
