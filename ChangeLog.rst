@@ -1,3 +1,16 @@
+funtoo-ramdisk 1.0.6
+--------------------
+
+Released on August 21, 2023.
+
+Two new options:
+
+* ``--modules_root`` to set the root filesystem to scan for modules.
+  It defaults to ``/``.
+
+* ``--temp_root`` to set the default path to use for creating a
+   temporary directory. It defaults to ``/var/tmp``.
+
 funtoo-ramdisk 1.0.5
 --------------------
 

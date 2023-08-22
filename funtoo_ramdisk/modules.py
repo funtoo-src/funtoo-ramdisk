@@ -83,19 +83,20 @@ class ModuleScanner:
 				continue
 			else:
 				# remove provided "insmod " prefix, the split is there because module options from /etc/modprobe.d can be after the path:
-				out_set.add(re.sub(f'^insmod {self.root}', '', line).split()[0].strip())
+				fang = os.path.normpath(re.sub(f'^insmod ', '', line).split()[0])
+				if fang.startswith("//"):
+					# The mechanism we use gives us a double "/" if self.root == "/", and this breaks stuff. This is a workaround:
+					fang = fang[1:]
+				out_set.add(fang)
 		return out_set
 
 	def recursively_get_module_paths(self, scan_dir, root=None) -> set:
 		"""
-		Given a "scan dir", which is a module sub-path relative to "/lib/modules/<kernel_name>/" which is specified in ``INSTALL_MOD_PATH``,
-		scan for all kernel modules, and return their absolute paths in a set.
+		Given a "scan dir", which is a module sub-path relative to "/lib/modules/<kernel_name>/", scan for all kernel modules, and return
+		their absolute paths in a set.
 
 		For each module we find, we also need to scan for any dependencies it has. So, we will call ``get_module_deps_by_name`` for each
 		module found.
-
-		Note that the optional keyword argument ``root=`` can be used to specify an alternate root, which ``process_autoload_config``
-		actually uses to scan the initramfs for already-copied modules when building the autoload lists.
 		"""
 		out_set = set()
 		if root is None:
@@ -111,6 +112,12 @@ class ModuleScanner:
 		return out_set
 
 	def glob_walk_module_paths(self, entry, root=None):
+		"""
+		This method will look in the module path rooted at ``root`` (defaulting to ``self.root``) and find all modules
+		that match the glob.
+
+		This is used for finding modules to copy and also scanning already-copied modules, with ``root=initramfs_root``.
+		"""
 		out_set = set()
 		if root is None:
 			root = self.root
@@ -122,7 +129,7 @@ class ModuleScanner:
 			out_set |= self.get_module_deps_by_name(module_name)
 		return out_set
 
-	def process_copy_line(self, section, entry : str) -> set:
+	def process_copy_line(self, section, entry: str) -> set:
 		"""
 		This method processes a single line in a ``modules.copy`` file. We support two formats::
 
@@ -198,8 +205,8 @@ class ModuleScanner:
 
 	def copy_modules_to_initramfs(self, initramfs_root, strip_debug=True):
 		out_path = os.path.join(initramfs_root, "lib/modules", self.kernel_version)
-		strip_path = os.path.join(self.root, "lib/modules", self.kernel_version)
-		strip_len = len(strip_path)
+		src_modroot = os.path.join(self.root, "lib/modules", self.kernel_version)
+		src_modroot_len = len(src_modroot)
 		mod_count = 0
 
 		# This will contain things like "kernel/fs/ext4.ko" and we will use it later to filter the ``modules`.order`` file.
@@ -230,7 +237,7 @@ the following masked modules:\n\n"""
 		for mod_name in all_mods_names:
 			mod_abs = self.copy_config["by_name"][mod_name]
 			# This gets us the "kernel/fs/ext4.ko" path:
-			sub_path = mod_abs[strip_len:].lstrip("/")
+			sub_path = mod_abs[src_modroot_len:].lstrip("/")
 			all_subpaths.add(sub_path)
 			mod_abs_dest = os.path.join(out_path, sub_path)
 			os.makedirs(os.path.dirname(mod_abs_dest), exist_ok=True)
@@ -240,14 +247,14 @@ the following masked modules:\n\n"""
 		if strip_debug:
 			subprocess.getstatusoutput(f'cd "{initramfs_root}" && find -iname "*.ko" -exec strip --strip-debug {{}} \\;')
 		for mod_file in ["modules.builtin", "modules.builtin.modinfo"]:
-			mod_path = os.path.join(strip_path, mod_file)
+			mod_path = os.path.join(src_modroot, mod_file)
 			if os.path.exists(mod_path):
 				shutil.copy(mod_path, out_path)
 
 		# Copy over modules.order file, but strip out lines for modules that don't exist on the initramfs. This is actually
 		# pretty easy to do, and is an easy way to get a total copied modules count:
 
-		mod_order = os.path.join(strip_path, "modules.order")
+		mod_order = os.path.join(src_modroot, "modules.order")
 		if os.path.exists(mod_order):
 			with open(mod_order, "r") as mod_f:
 				with open(os.path.join(out_path, "modules.order"), "w") as mod_f_out:
@@ -258,9 +265,6 @@ the following masked modules:\n\n"""
 		self.log.info(f"{mod_count} kernel modules copied to initramfs.")
 
 	def process_autoload_config(self, config_file, initramfs_root):
-		"""
-
-		"""
 		out_dict = defaultdict(list)
 		section = None
 		lineno = 1
@@ -308,18 +312,17 @@ You should fix this so that the module you are asking to autoload is also includ
 
 	def populate_initramfs(self, initial_ramdisk):
 		self.process_copy_config(os.path.join(initial_ramdisk.support_root, "modules.copy"))
-		self.copy_modules_to_initramfs(initramfs_root=initial_ramdisk.root)
-		retval = os.system(f'/sbin/depmod -b "{initial_ramdisk.root}" {self.kernel_version}')
+		self.copy_modules_to_initramfs(initramfs_root=initial_ramdisk.initramfs_root)
+		retval = os.system(f'/sbin/depmod -b "{initial_ramdisk.initramfs_root}" {self.kernel_version}')
 		if retval:
 			raise OSError(f"Encountered error {retval} when running depmod.")
 		auto_out = self.process_autoload_config(
 			os.path.join(initial_ramdisk.support_root, "modules.autoload"),
-			initramfs_root=initial_ramdisk.root
+			initramfs_root=initial_ramdisk.initramfs_root
 		)
 		# Write out category files which will be used by the autoloader on the initramfs
-		os.makedirs(os.path.join(initial_ramdisk.root, "etc/modules"), exist_ok=True)
+		os.makedirs(os.path.join(initial_ramdisk.initramfs_root, "etc/modules"), exist_ok=True)
 		for mod_cat, mod_names in auto_out.items():
-			with open(os.path.join(initial_ramdisk.root, "etc/modules", mod_cat), "w") as f:
+			with open(os.path.join(initial_ramdisk.initramfs_root, "etc/modules", mod_cat), "w") as f:
 				for mod in mod_names:
 					f.write(f"{mod}\n")
-

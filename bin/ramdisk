@@ -44,20 +44,21 @@ if not from_git:
 
 from funtoo_ramdisk.initramfs import InitialRamDisk
 from funtoo_ramdisk.config_files import ConfigFstab
+from funtoo_ramdisk.version import __version__
 
-try:
-	from funtoo_ramdisk.version import __version__
-except:
-	__version__ = "git"
+if from_git:
+	__version__ += "+git"
 
 CLI_ARGS = {
-	"kernel": {"default": None, "action": "store", "nargs": "?", "help": "What kernel to use to build initramfs (default: /usr/src/linux symlink."},
+	"kernel": {"default": None, "action": "store", "nargs": "?", "help": "What kernel to use to build initramfs (default: /usr/src/linux symlink.)"},
 	"destination": {"default": None, "action": "store", "positional": True, "help": "The output initramfs filename to create."},
 	"debug": {"default": False, "action": "store_true"},
 	"compression": {"default": "xz", "action": "store", "help": "Compression method. One of: xz, zstd"},
 	"backtrace": {"default": False, "action": "store_true", "help": "Show full backtrace of any exception."},
 	"force": {"default": False, "action": "store_true", "help": "Force overwrite of initramfs destination if it exists."},
-	"version": {"action": "version", "version": f"funtoo-ramdisk {__version__}"}
+	"version": {"action": "version", "version": f"funtoo-ramdisk {__version__}"},
+	"modules_root": {"default": "/", "action": "store", "help": "Root filesystem of modules to copy to initramfs."},
+	"temp_root": {"default": "/var/tmp", "action": "store", "help": "Main directory to use for temporary directory creation."}
 }
 
 args = parse_args()
@@ -76,7 +77,7 @@ if from_git:
 
 
 async def main_thread():
-	output_initramfs = os.path.normpath(args.destination)
+	output_initramfs = os.path.abspath(args.destination)
 	if os.path.exists(output_initramfs) and not args.force:
 		raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
 	fstab = ConfigFstab()
@@ -136,19 +137,23 @@ following:
 			raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
 	else:
 		kernel_version = args.kernel
-	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir="/var/tmp") as temp_dir:
+	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=args.temp_root) as temp_dir:
+		mod_root = args.modules_root
+		if mod_root != "/":
+			mod_root = mod_root.rstrip("/")
 		ramdisk = InitialRamDisk(
 			temp_root=temp_dir,
 			support_root=support_root,
 			kernel_version=kernel_version,
-			compression=args.compression
+			compression=args.compression,
+			modules_root=mod_root
 		)
 		ramdisk.create_ramdisk(output_initramfs)
 
-
 if __name__ == "__main__":
+	success = True
 	try:
-		success = asyncio.run(main_thread())
+		asyncio.run(main_thread())
 	except Exception as e:
 		log.error(f"{e.__class__.__name__}: {e}")
 		if args.backtrace:

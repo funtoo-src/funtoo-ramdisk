@@ -36,12 +36,13 @@ class InitialRamDisk:
 		}
 	}
 
-	def __init__(self, temp_root, support_root, kernel_version, compression):
+	def __init__(self, temp_root, support_root, kernel_version, compression, modules_root="/"):
 		self.temp_root = temp_root
-		self.root = os.path.join(self.temp_root, "initramfs")
-		os.makedirs(self.root)
+		self.initramfs_root = os.path.join(self.temp_root, "initramfs")
+		os.makedirs(self.initramfs_root)
 		self.support_root = support_root
-		self.module_scanner = ModuleScanner(kernel_version=kernel_version, root="/")
+		self.modules_root = modules_root
+		self.module_scanner = ModuleScanner(kernel_version=kernel_version, root=self.modules_root)
 		self.log = logging.getLogger("ramdisk")
 		self.size_initial = None
 		self.size_final = None
@@ -55,26 +56,26 @@ class InitialRamDisk:
 
 	def create_baselayout(self):
 		for dir_name in self.base_dirs:
-			os.makedirs(os.path.join(self.root, dir_name), exist_ok=True)
-		os.makedirs(os.path.join(self.root, "lib"), exist_ok=True)
-		os.symlink("lib", os.path.join(self.root, "lib64"))
-		os.symlink("../lib", os.path.join(self.root, "usr/lib"))
-		os.symlink("../lib", os.path.join(self.root, "usr/lib64"))
+			os.makedirs(os.path.join(self.initramfs_root, dir_name), exist_ok=True)
+		os.makedirs(os.path.join(self.initramfs_root, "lib"), exist_ok=True)
+		os.symlink("lib", os.path.join(self.initramfs_root, "lib64"))
+		os.symlink("../lib", os.path.join(self.initramfs_root, "usr/lib"))
+		os.symlink("../lib", os.path.join(self.initramfs_root, "usr/lib64"))
 
 	def create_fstab(self):
-		with open(os.path.join(self.root, "etc/fstab"), "w") as f:
+		with open(os.path.join(self.initramfs_root, "etc/fstab"), "w") as f:
 			f.write("/dev/ram0     /           ext2    defaults        0 0\n")
 			f.write("proc          /proc       proc    defaults        0 0\n")
 
 	def setup_linuxrc_and_etc(self):
-		dest = os.path.join(self.root, "init")
+		dest = os.path.join(self.initramfs_root, "init")
 		shutil.copy(os.path.join(self.support_root, "linuxrc"), dest)
-		os.symlink("init", os.path.join(self.root, "linuxrc"))
-		os.symlink("../init", os.path.join(self.root, "sbin/init"))
+		os.symlink("init", os.path.join(self.initramfs_root, "linuxrc"))
+		os.symlink("../init", os.path.join(self.initramfs_root, "sbin/init"))
 		for file in os.listdir(os.path.join(self.support_root, "etc")):
-			shutil.copy(os.path.join(self.support_root, "etc", file), os.path.join(self.root, "etc"))
+			shutil.copy(os.path.join(self.support_root, "etc", file), os.path.join(self.initramfs_root, "etc"))
 		for x in ["init", "etc/initrd.scripts", "etc/initrd.defaults"]:
-			os.chmod(os.path.join(self.root, x), 0O755)
+			os.chmod(os.path.join(self.initramfs_root, x), 0O755)
 
 	def setup_busybox(self):
 		self.copy_binary("/bin/busybox")
@@ -93,7 +94,7 @@ class InitialRamDisk:
 			"depmod",
 			"modinfo"
 		]:
-			os.symlink("busybox", os.path.join(self.root, "bin", applet))
+			os.symlink("busybox", os.path.join(self.initramfs_root, "bin", applet))
 
 	def copy_binary(self, binary):
 		"""
@@ -106,7 +107,7 @@ class InitialRamDisk:
 		if status != 0:
 			raise OSError(f"lddtree returned error code {status} when processing {binary}")
 		for src_abs in output.split('\n'):
-			dest_abs = os.path.join(self.root, src_abs.lstrip("/"))
+			dest_abs = os.path.join(self.initramfs_root, src_abs.lstrip("/"))
 			os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
 			shutil.copy(src_abs, dest_abs)
 
@@ -118,7 +119,7 @@ class InitialRamDisk:
 		# We use a "starter" initramfs.cpio with some pre-existing device nodes, because the current user may
 		# not have permission to create literal device nodes on the local filesystem:
 		shutil.copy(os.path.join(self.support_root, "initramfs.cpio"), self.temp_initramfs)
-		status = os.system(f'( cd "{self.root}" && find . -print | cpio --quiet -o --format=newc --append -F "{self.temp_initramfs}" )')
+		status = os.system(f'( cd "{self.initramfs_root}" && find . -print | cpio --quiet -o --format=newc --append -F "{self.temp_initramfs}" )')
 		if status:
 			raise OSError(f"cpio creation failed with error code {status}")
 		if not os.path.exists(self.temp_initramfs):
@@ -146,11 +147,11 @@ class InitialRamDisk:
 		return out_cpio
 
 	def copy_modules(self):
-		os.makedirs(f"{self.root}/lib/modules", exist_ok=True)
+		os.makedirs(f"{self.initramfs_root}/lib/modules", exist_ok=True)
 		self.module_scanner.populate_initramfs(initial_ramdisk=self)
 
 	def create_ramdisk(self, final_cpio):
-		self.log.info(f"Using {self.root} to build initramfs")
+		self.log.info(f"Using {self.initramfs_root} to build initramfs")
 		self.create_baselayout()
 		self.create_fstab()
 		self.setup_linuxrc_and_etc()
