@@ -36,23 +36,23 @@ class InitialRamDisk:
 		}
 	}
 
-	def __init__(self, temp_root, support_root, kernel_version, compression, modules_root="/"):
+	def __init__(self, temp_root, support_root, kernel_version, compression, modules_root="/", logger=None):
 		self.temp_root = temp_root
 		self.initramfs_root = os.path.join(self.temp_root, "initramfs")
 		os.makedirs(self.initramfs_root)
 		self.support_root = support_root
 		self.modules_root = modules_root
-		self.module_scanner = ModuleScanner(kernel_version=kernel_version, root=self.modules_root)
-		self.log = logging.getLogger("ramdisk")
+		if logger:
+			self.log = logger
+		else:
+			self.log = logging.getLogger("ramdisk")
+		self.module_scanner = ModuleScanner(kernel_version=kernel_version, root=self.modules_root, logger=self.log)
 		self.size_initial = None
 		self.size_final = None
 		self.size_compressed = None
 		if compression not in self.comp_methods.keys():
 			raise ValueError(f"Specified compression method must be one of: {' '.join(sorted(list(self.comp_methods.keys())))}.")
 		self.compression = compression
-
-	def info(self, out_str):
-		self.log.info(out_str)
 
 	def create_baselayout(self):
 		for dir_name in self.base_dirs:
@@ -125,12 +125,12 @@ class InitialRamDisk:
 		if not os.path.exists(self.temp_initramfs):
 			raise FileNotFoundError(f"Expected file {self.temp_initramfs} did not get created.")
 		self.size_initial = os.path.getsize(self.temp_initramfs)
-		self.info(f"Created {self.temp_initramfs} / Size: {self.size_initial / 1000000:.2f} MiB")
+		self.log.debug(f"Created {self.temp_initramfs} / Size: {self.size_initial / 1000000:.2f} MiB")
 
 	def compress_ramdisk(self):
 		ext = self.comp_methods[self.compression]["ext"]
 		cmd = self.comp_methods[self.compression]["cmd"]
-		self.info(f"Compressing initial ramdisk using {' '.join(cmd)}...")
+		self.log.info(f"Compressing initial ramdisk using [turquoise2]{' '.join(cmd)}[default]...")
 		out_cpio = f"{self.temp_initramfs}.{ext}"
 		with open(out_cpio, "wb") as of:
 			with open(self.temp_initramfs, "rb") as f:
@@ -143,7 +143,7 @@ class InitialRamDisk:
 				if comp_process.returncode != 0:
 					raise OSError(f"{cmd[0]} returned error code {comp_process.returncode} when compressing {self.temp_initramfs}")
 		self.size_final = os.path.getsize(out_cpio)
-		self.info(f"Created {out_cpio} / Size: {self.size_final / 1000000:.2f} MiB / {(self.size_final / self.size_initial) * 100:.2f}% of original")
+
 		return out_cpio
 
 	def copy_modules(self):
@@ -151,7 +151,8 @@ class InitialRamDisk:
 		self.module_scanner.populate_initramfs(initial_ramdisk=self)
 
 	def create_ramdisk(self, final_cpio):
-		self.log.info(f"Using {self.initramfs_root} to build initramfs")
+		self.log.debug(f"Using {self.initramfs_root} to build initramfs")
+		self.log.info(f"Creating initramfs...")
 		self.create_baselayout()
 		self.create_fstab()
 		self.setup_linuxrc_and_etc()
@@ -164,5 +165,8 @@ class InitialRamDisk:
 		out_cpio = self.compress_ramdisk()
 		os.makedirs(os.path.dirname(final_cpio), exist_ok=True)
 		shutil.copy(out_cpio, final_cpio)
-		self.info(f"Copied final initramfs to {final_cpio}.")
+		self.log.info(f"Orig. Size:  [turquoise2]{self.size_initial / 1000000:6.2f} MiB[default]")
+		self.log.info(f"Final Size:  [turquoise2]{self.size_final / 1000000:6.2f} MiB[default]")
+		self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
+		self.log.done(f"Created:     [orange1]{final_cpio}[default]")
 

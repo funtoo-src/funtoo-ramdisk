@@ -34,11 +34,13 @@ class ModuleScanner:
 	We record this because we have to grab all the masks and process them at the end.
 	"""
 
-	def __init__(self, kernel_version, root="/"):
+	def __init__(self, kernel_version, root="/", logger=None):
 		self.root = root
 		self.kernel_version = kernel_version
-		self.log = logging.getLogger("ramdisk")
-
+		if logger:
+			self.log = logger
+		else:
+			self.log = logging.getLogger("ramdisk")
 		self.builtins_by_name = {}
 		self.builtins_by_path = set()
 		self.copy_config = {
@@ -262,7 +264,7 @@ the following masked modules:\n\n"""
 						if line.strip() in all_subpaths:
 							mod_f_out.write(line)
 
-		self.log.info(f"{mod_count} kernel modules copied to initramfs.")
+		self.log.info(f"[turquoise2]{mod_count}[default] kernel modules copied to initramfs.")
 
 	def process_autoload_config(self, config_file, initramfs_root):
 		out_dict = defaultdict(list)

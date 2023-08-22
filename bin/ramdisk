@@ -5,9 +5,11 @@ import os
 import re
 import subprocess
 import sys
-import logging
 import tempfile
-from rich.logging import RichHandler
+
+from rich.console import Console
+from rich.highlighter import RegexHighlighter
+from rich.theme import Theme
 
 def parse_args():
 	ap = argparse.ArgumentParser()
@@ -50,33 +52,64 @@ if from_git:
 	__version__ += "+git"
 
 CLI_ARGS = {
-	"kernel": {"default": None, "action": "store", "nargs": "?", "help": "What kernel to use to build initramfs (default: /usr/src/linux symlink.)"},
+	"kernel": {"default": None, "action": "store", "nargs": "?", "help": "What kernel to use to build initramfs (default: {fs_root}/usr/src/linux symlink.)"},
 	"destination": {"default": None, "action": "store", "positional": True, "help": "The output initramfs filename to create."},
 	"debug": {"default": False, "action": "store_true"},
 	"compression": {"default": "xz", "action": "store", "help": "Compression method. One of: xz, zstd"},
 	"backtrace": {"default": False, "action": "store_true", "help": "Show full backtrace of any exception."},
 	"force": {"default": False, "action": "store_true", "help": "Force overwrite of initramfs destination if it exists."},
 	"version": {"action": "version", "version": f"funtoo-ramdisk {__version__}"},
-	"modules_root": {"default": "/", "action": "store", "help": "Root filesystem of modules to copy to initramfs."},
+	"fs_root": {"default": "/", "action": "store", "help": "Root filesystem of modules to copy to initramfs, and look for kernel source."},
 	"temp_root": {"default": "/var/tmp", "action": "store", "help": "Main directory to use for temporary directory creation."}
 }
 
 args = parse_args()
 
-log = logging.getLogger("ramdisk")
-if args.debug:
-	log.setLevel(logging.DEBUG)
-else:
-	log.setLevel(logging.INFO)
-handler = RichHandler(show_path=False, show_time=False)
-log.addHandler(handler)
+
+class FakeLogger:
+	class MyHighlighter(RegexHighlighter):
+		base_style = "ramdisk."
+		highlights = [r"(?P<stats>^ ::.*)"]
+
+	def __init__(self, debug=False):
+		self.theme = Theme({"ramdisk.stats": "bold magenta"})
+		self.console = Console(highlighter=None, theme=self.theme)
+		self.debug_mode = debug
+
+	def info(self, msg):
+		self.console.print(" [turquoise2]::[default] " + msg)
+
+	def warning(self, msg):
+		self.console.print(" [orange1]::[default] " + msg)
+
+	def error(self, msg):
+		self.console.print(" [bright_white on dark_red]:collision::collision:[default] " + msg + " ")
+
+	def done(self, msg):
+		self.console.print(" [light_salmon1]:sparkle::sparkle:[default] " + msg)
+
+	def debug(self, msg):
+		if not self.debug_mode:
+			return
+		self.console.log(msg)
+
+	def print_exception(self, show_locals=False):
+		self.console.print_exception(show_locals=show_locals)
+
+
+log = FakeLogger(debug=args.debug)
+
 if args.debug:
 	log.info("DEBUG enabled.")
-if from_git:
-	log.warning(f"Running from git repository {os.path.dirname(proj_path)}")
+if args.backtrace:
+	from rich.traceback import install
+	install(show_locals=True)
 
 
 async def main_thread():
+	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
+	if from_git:
+		log.info(f"Running from git repository [turquoise2]{os.path.dirname(proj_path)}[default]")
 	output_initramfs = os.path.abspath(args.destination)
 	if os.path.exists(output_initramfs) and not args.force:
 		raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
@@ -111,16 +144,19 @@ following:
    create your ramdisk again.
 	""")
 	os.makedirs(os.path.dirname(output_initramfs), exist_ok=True)
+	kernel_link = os.path.join(args.fs_root, "usr/src/linux")
 	if args.kernel is None:
-		log.info("No kernel specified, so going to try to use /usr/src/linux symlink.")
-		if not os.path.islink("/usr/src/linux"):
-			raise FileNotFoundError("/usr/src/linux does not exist or is not a symlink.")
-		link_target = os.readlink("/usr/src/linux")
-
+		log.info(f"No kernel specified, so going to try to use [turquoise2]{kernel_link}[default] symlink.")
+		if not os.path.islink(kernel_link):
+			raise FileNotFoundError(f"{kernel_link} does not exist or is not a symlink.")
+		link_target = os.readlink(kernel_link)
+		link_target = os.path.join(os.path.dirname(kernel_link), link_target)
+		if not os.path.exists(link_target):
+			raise FileNotFoundError(f"Could not find kernel from symlink {kernel_link} -- looking for {link_target} symlink target.")
 		# grab data from Makefile, so we can determine correct kernel name for finding modules:
 		datums = ["VERSION", "PATCHLEVEL", "SUBLEVEL", "EXTRAVERSION"]
 		got_datums = {}
-		with open(os.path.join(os.path.dirname("/usr/src/linux"), link_target, "Makefile"), "r") as mkf:
+		with open(os.path.join(link_target, "Makefile"), "r") as mkf:
 			while len(got_datums.keys()) != 4:
 				line = mkf.readline()
 				if not line:
@@ -130,23 +166,27 @@ following:
 						if line.startswith(f"{datum} ="):
 							got_datums[datum] = line.split("=")[1].strip()
 		if len(got_datums.keys()) != 4:
-			raise ValueError(f"Could not extract: {datums} from /usr/src/linux/Makefile.")
+			raise ValueError(f"Could not extract: {datums} from {kernel_link}/Makefile.")
 		kernel_version = "{VERSION}.{PATCHLEVEL}.{SUBLEVEL}{EXTRAVERSION}".format(**got_datums)
-		module_path = f"/lib/modules/{kernel_version}"
+		status, current_version = subprocess.getstatusoutput("uname -r")
+		current_version = current_version.strip()
+		if kernel_version == current_version:
+			log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel)")
+		else:
+			log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel is: [bright cyan]{current_version}[default]).")
+		module_path = os.path.join(args.fs_root, f"lib/modules/{kernel_version}")
 		if not os.path.exists(module_path):
 			raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
 	else:
 		kernel_version = args.kernel
 	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=args.temp_root) as temp_dir:
-		mod_root = args.modules_root
-		if mod_root != "/":
-			mod_root = mod_root.rstrip("/")
 		ramdisk = InitialRamDisk(
 			temp_root=temp_dir,
 			support_root=support_root,
 			kernel_version=kernel_version,
 			compression=args.compression,
-			modules_root=mod_root
+			modules_root=args.fs_root,
+			logger = log
 		)
 		ramdisk.create_ramdisk(output_initramfs)
 
@@ -157,7 +197,7 @@ if __name__ == "__main__":
 	except Exception as e:
 		log.error(f"{e.__class__.__name__}: {e}")
 		if args.backtrace:
-			log.fatal("Backtrace", exc_info=e)
+			log.print_exception(show_locals=False)
 		success = False
 	if not success:
 		sys.exit(1)
