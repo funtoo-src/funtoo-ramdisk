@@ -1,10 +1,14 @@
 #!/usr/bin/python3
+import importlib
 import logging
 import os
+import pkgutil
 import shutil
+import site
 import subprocess
 
 from .modules import ModuleScanner
+from .utilities import copy_binary
 
 
 class InitialRamDisk:
@@ -36,12 +40,25 @@ class InitialRamDisk:
 		}
 	}
 
-	def __init__(self, temp_root, support_root, kernel_version, compression, modules_root="/", logger=None):
+	def __init__(self, action, temp_root, support_root, kernel_version, compression,
+				modules_root="/",
+				logger=None,
+				pypath=None,
+				enabled_plugins=None
+		):
+		self.action = action
+		self.enabled_plugins = {"core"}
+		if enabled_plugins:
+			self.enabled_plugins |= set(enabled_plugins)
 		self.temp_root = temp_root
 		self.initramfs_root = os.path.join(self.temp_root, "initramfs")
 		os.makedirs(self.initramfs_root)
 		self.support_root = support_root
 		self.modules_root = modules_root
+		if pypath is not None:
+			self.py_mod_path = [os.path.join(pypath, "plugins")]
+		else:
+			self.py_mod_path = [site.getsitepackages(), "funtoo_ramdisk/plugins"]
 		if logger:
 			self.log = logger
 		else:
@@ -53,6 +70,34 @@ class InitialRamDisk:
 		if compression not in self.comp_methods.keys():
 			raise ValueError(f"Specified compression method must be one of: {' '.join(sorted(list(self.comp_methods.keys())))}.")
 		self.compression = compression
+		self.plugins = {}
+		for plugin in pkgutil.iter_modules(self.py_mod_path, "funtoo_ramdisk.plugins."):
+			mod = importlib.import_module(plugin.name)
+			iter_plugins = getattr(mod, "iter_plugins", None)
+			if not iter_plugins:
+				self.log.warning(f"Plugin {plugin.name} is missing an iter_plugins function; skipping.")
+			else:
+				for plugin_obj in iter_plugins():
+					plugin_obj_inst = plugin_obj(self)
+					self.plugins[plugin_obj.key] = plugin_obj_inst
+		if self.plugins:
+			out_list = []
+			for plugin in sorted(self.plugins.keys()):
+				if plugin in self.enabled_plugins:
+					out_list.append(f"[orange1]{plugin}[default]")
+				else:
+					out_list.append(f"[turquoise2]{plugin}[default]")
+			self.log.info(f"Registered plugins: {'/'.join(out_list)}")
+
+	def iter_plugins(self):
+		for plugin in self.plugins.keys():
+			if plugin in self.enabled_plugins:
+				self.log.info(f"Running [orange1]{plugin}[default] plugin...")
+				success = self.plugins[plugin].run()
+				if not success:
+					self.log.error("Exiting due to failed plugin.")
+					return False
+		return True
 
 	def create_baselayout(self):
 		for dir_name in self.base_dirs:
@@ -96,21 +141,6 @@ class InitialRamDisk:
 		]:
 			os.symlink("busybox", os.path.join(self.initramfs_root, "bin", applet))
 
-	def copy_binary(self, binary):
-		"""
-		Specify an executable, and it gets copied to the initramfs -- along with all dependent
-		libraries, if any.
-
-		This method uses the ``lddtree`` command from paxutils.
-		"""
-		status, output = subprocess.getstatusoutput(f"/usr/bin/lddtree -l {binary}")
-		if status != 0:
-			raise OSError(f"lddtree returned error code {status} when processing {binary}")
-		for src_abs in output.split('\n'):
-			dest_abs = os.path.join(self.initramfs_root, src_abs.lstrip("/"))
-			os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
-			shutil.copy(src_abs, dest_abs)
-
 	@property
 	def temp_initramfs(self):
 		return os.path.join(self.temp_root, "initramfs.cpio")
@@ -147,8 +177,12 @@ class InitialRamDisk:
 		return out_cpio
 
 	def copy_modules(self):
+		self.log.info("Starting modules processing...")
 		os.makedirs(f"{self.initramfs_root}/lib/modules", exist_ok=True)
 		self.module_scanner.populate_initramfs(initial_ramdisk=self)
+
+	def copy_binary(self, binary):
+		copy_binary(binary, dest_root=self.initramfs_root)
 
 	def create_ramdisk(self, final_cpio):
 		self.log.debug(f"Using {self.initramfs_root} to build initramfs")
@@ -157,7 +191,9 @@ class InitialRamDisk:
 		self.create_fstab()
 		self.setup_linuxrc_and_etc()
 		self.setup_busybox()
-		self.copy_binary("/sbin/blkid")
+		success = self.iter_plugins()
+		if not success:
+			return False
 		self.copy_modules()
 		# TODO: add firmware?
 		# TODO: this needs cleaning up:
@@ -169,4 +205,4 @@ class InitialRamDisk:
 		self.log.info(f"Final Size:  [turquoise2]{self.size_final / 1000000:6.2f} MiB[default]")
 		self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
 		self.log.done(f"Created:     [orange1]{final_cpio}[default]")
-
+		return True
