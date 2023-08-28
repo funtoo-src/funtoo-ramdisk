@@ -34,9 +34,12 @@ class ModuleScanner:
 	We record this because we have to grab all the masks and process them at the end.
 	"""
 
-	def __init__(self, kernel_version, root="/", logger=None):
+	def __init__(self, modconfig, kernel_version, copy_lines=None, autoload_lines=None, root="/", logger=None):
+		self.modconfig = modconfig
 		self.root = root
 		self.kernel_version = kernel_version
+		self.copy_lines = copy_lines
+		self.autoload_lines = autoload_lines
 		if logger:
 			self.log = logger
 		else:
@@ -49,6 +52,7 @@ class ModuleScanner:
 			"names_in_sections": defaultdict(set)
 		}
 		self.copy_config_mask = defaultdict(set)
+		self.autoload_sections = []
 
 		# Create a list of built-in modules. Use this list in our sanity checks. If a module is built-in to the
 		# kernel, we won't be able to copy it to the initramfs, and that's OK. It's still "there" in spirit.
@@ -131,24 +135,23 @@ class ModuleScanner:
 			out_set |= self.get_module_deps_by_name(module_name)
 		return out_set
 
+	def get_specific_module(self, entry, root=None):
+		"""
+		Walk paths and find a specific module by name.
+		"""
+		if root is None:
+			root = self.root
+		scan_path = os.path.join(root, "lib/modules", self.kernel_version)
+		find_me = f"{entry}.ko"
+		for path, dirs, fns in os.walk(scan_path):
+			for fn in fns:
+				if fn == find_me:
+					return self.get_module_deps_by_name(entry)
+		raise FileNotFoundError(f"Could not find kernel module: {entry}")
+
 	def process_copy_line(self, section, entry: str) -> set:
 		"""
-		This method processes a single line in a ``modules.copy`` file. We support two formats::
-
-		  kernel/fs/**
-
-		The above means: recursively scan ``kernel/fs`` for all kernel modules, and return a set of all modules found, and their
-		dependencies.
-
-		The other format we can use is (this is two examples, only pass one of these strings in ``entry`` at a time):
-
-		  kernel/fs/ext4.ko
-		  drivers/net/foo*
-
-		The two examples above are both treated as globs -- we will find all matches, and then return a set containing all matches,
-		as well as the dependencies of all matches.
-		:param entry:
-		:return:
+		This method processes a single line in a ``modules.copy`` file.
 		"""
 		out_set = set()
 		if entry.startswith("-"):
@@ -157,11 +160,15 @@ class ModuleScanner:
 			self.log.debug(f"Module {entry[1:]} mask recorded for {section} section.")
 		elif entry.endswith("/**"):
 			out_set |= self.recursively_get_module_paths(entry[:-3])
+		elif "/" not in entry:
+			# literal module name, get module and deps:
+			out_set |= self.get_specific_module(entry)
 		else:
+			# assume glob:
 			out_set |= self.glob_walk_module_paths(entry)
 		return out_set
 
-	def process_copy_config(self, config_file):
+	def process_copy_config(self):
 		"""
 		This method processes a ``modules.copy`` file which has a simplified ini-style format:
 
@@ -169,30 +176,46 @@ class ModuleScanner:
 		  kernel/drivers/net/ethernet/**
 
 		  [iscsi]
-		  kernel/drivers/scsi/*iscsi*
-		  kernel/drivers/target/iscsi/**
+		  kernel/drivers/scsi/*iscsi*      # glob
+		  kernel/drivers/target/iscsi/**   # include entire tree
+		  -scsi_debug                      # exclude by module name
+		  foobar						   # include by module name
+
+		When we specify a module or a bunch of modules, we will also grab all *dependencies* of these
+		modules.
+
+		Masking of modules you want to exclude via the "-(modname)" is supported, and this step is
+		performed in a second phase. We remove these modules from being included in the initramfs if
+		they are not included by another section.
+
+		TODO: Also remove any modules that are unused that were dependent on the to-be-masked module.
+		      Right now, we could possibly include some extra modules needed by masked modules. To
+		      fix this, ``self.get_module_deps_by_name()`` should return a tuple of the original module
+		      and its dependencies. Then we should not create a final set of modules until masking is
+		      done. This will allow us to wipe a masked module, plus its dependencies. This will be nice
+		      but is not a critical feature as masking is currently used to remove "naughty" modules
+		      that cause problems rather than just general trimming of module bloat.
 
 		This file will be scanned, and a bunch of information will be returned (see ``return``, below.)
 
 		:param config_file: the file to read.
 		"""
 		section = None
-		with open(config_file, "r") as cfg:
-			for line in cfg.read().split("\n"):
-				line = line.strip()
-				if line.startswith("[") and line.endswith("]"):
-					section = line[1:-1]
-					continue
-				elif not len(line):
-					continue
-				elif line.startswith("#"):
-					continue
-				new_items = self.process_copy_line(section, line)
-				self.copy_config["sections"][section] |= new_items
-				for mod_path in new_items:
-					mod_name = os.path.basename(mod_path)[:-3]  # strip .ko
-					self.copy_config["by_name"][mod_name] = mod_path
-					self.copy_config["names_in_sections"][mod_name].add(section)
+		for line in self.copy_lines:
+			line = line.strip()
+			if line.startswith("[") and line.endswith("]"):
+				section = line[1:-1]
+				continue
+			elif not len(line):
+				continue
+			elif line.startswith("#"):
+				continue
+			new_items = self.process_copy_line(section, line)
+			self.copy_config["sections"][section] |= new_items
+			for mod_path in new_items:
+				mod_name = os.path.basename(mod_path)[:-3]  # strip .ko
+				self.copy_config["by_name"][mod_name] = mod_path
+				self.copy_config["names_in_sections"][mod_name].add(section)
 
 		# Process masks. Modules masked from existence will not be purged from ``self.copy_config["by_name"]``, though,
 		# so use it only for lookups and not as authoritative list of all modules to copy or expect on initramfs:
@@ -266,28 +289,28 @@ the following masked modules:\n\n"""
 
 		self.log.info(f"[turquoise2]{mod_count}[default] kernel modules copied to initramfs.")
 
-	def process_autoload_config(self, config_file, initramfs_root):
+	def process_autoload_config(self, initramfs_root):
 		out_dict = defaultdict(list)
 		section = None
 		lineno = 1
-		with open(config_file, "r") as cfg:
-			for line in cfg.read().split("\n"):
-				found_mods = set()
-				line = line.strip()
-				if line.startswith("[") and line.endswith("]"):
-					section = line[1:-1]
-					continue
-				elif not len(line):
-					continue
-				elif line.startswith("#"):
-					continue
-				if "/" not in line and not line.endswith(".ko"):
-					# We are directly-specifying a module name like "ext4". Make sure it was copied. This following conditional
-					# is how to check -- is it in at least one section? (remember, don't use copy_config["by_name"], as it may
-					# include masked (removed) modules:
-					if line in self.copy_config["names_in_sections"] and len(self.copy_config["names_in_sections"][line]):
-						if section not in self.copy_config["names_in_sections"][line]:
-							self.log.warning(f"""modules.autoload, line {lineno}: You are specifying a module to autoload that was added to other sections: 
+		for line in self.autoload_lines:
+			found_mods = set()
+			line = line.strip()
+			if line.startswith("[") and line.endswith("]"):
+				section = line[1:-1]
+				self.autoload_sections.append(section)
+				continue
+			elif not len(line):
+				continue
+			elif line.startswith("#"):
+				continue
+			if "/" not in line and not line.endswith(".ko"):
+				# We are directly-specifying a module name like "ext4". Make sure it was copied. This following conditional
+				# is how to check -- is it in at least one section? (remember, don't use copy_config["by_name"], as it may
+				# include masked (removed) modules:
+				if line in self.copy_config["names_in_sections"] and len(self.copy_config["names_in_sections"][line]):
+					if section not in self.copy_config["names_in_sections"][line]:
+						self.log.warning(f"""modules.autoload, line {lineno}: You are specifying a module to autoload that was added to other sections: 
 
   {self.copy_config['names_in_sections'][line]}
   
@@ -313,13 +336,12 @@ You should fix this so that the module you are asking to autoload is also includ
 		return out_dict
 
 	def populate_initramfs(self, initial_ramdisk):
-		self.process_copy_config(os.path.join(initial_ramdisk.support_root, "modules.copy"))
+		self.process_copy_config()
 		self.copy_modules_to_initramfs(initramfs_root=initial_ramdisk.initramfs_root)
 		retval = os.system(f'/sbin/depmod -b "{initial_ramdisk.initramfs_root}" {self.kernel_version}')
 		if retval:
 			raise OSError(f"Encountered error {retval} when running depmod.")
 		auto_out = self.process_autoload_config(
-			os.path.join(initial_ramdisk.support_root, "modules.autoload"),
 			initramfs_root=initial_ramdisk.initramfs_root
 		)
 		# Write out category files which will be used by the autoloader on the initramfs
@@ -328,3 +350,6 @@ You should fix this so that the module you are asking to autoload is also includ
 			with open(os.path.join(initial_ramdisk.initramfs_root, "etc/modules", mod_cat), "w") as f:
 				for mod in mod_names:
 					f.write(f"{mod}\n")
+		with open(os.path.join(initial_ramdisk.initramfs_root, "etc/modules.autoload"), "w") as f:
+			for sect in self.autoload_sections:
+				f.write(f"{sect}\n")

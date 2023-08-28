@@ -8,7 +8,7 @@ import site
 import subprocess
 
 from .modules import ModuleScanner
-from .utilities import copy_binary
+from .utilities import copy_binary, iter_lines
 
 
 class InitialRamDisk:
@@ -44,8 +44,12 @@ class InitialRamDisk:
 				modules_root="/",
 				logger=None,
 				pypath=None,
-				enabled_plugins=None
+				enabled_plugins=None,
+				modconfig="full",
+				kpop=None,
 		):
+		self.kpop = kpop
+		self.modconfig = modconfig
 		self.action = action
 		self.enabled_plugins = {"core"}
 		if enabled_plugins:
@@ -63,7 +67,23 @@ class InitialRamDisk:
 			self.log = logger
 		else:
 			self.log = logging.getLogger("ramdisk")
-		self.module_scanner = ModuleScanner(kernel_version=kernel_version, root=self.modules_root, logger=self.log)
+		if self.modconfig == "kpop":
+			if not self.kpop:
+				raise ValueError("The kpop option requires a list of modules specified to include.")
+			copy_lines = autoload_lines = iter([
+				"[kpop]",
+			] + self.kpop)
+		else:
+			copy_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.modconfig, "modules.copy"))
+			autoload_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.modconfig, "modules.autoload"))
+		self.module_scanner = ModuleScanner(
+			self.modconfig,
+			kernel_version=kernel_version,
+			root=self.modules_root,
+			logger=self.log,
+			copy_lines=copy_lines,
+			autoload_lines=autoload_lines
+		)
 		self.size_initial = None
 		self.size_final = None
 		self.size_compressed = None
@@ -181,8 +201,8 @@ class InitialRamDisk:
 		os.makedirs(f"{self.initramfs_root}/lib/modules", exist_ok=True)
 		self.module_scanner.populate_initramfs(initial_ramdisk=self)
 
-	def copy_binary(self, binary):
-		copy_binary(binary, dest_root=self.initramfs_root)
+	def copy_binary(self, binary, out_path=None):
+		copy_binary(binary, dest_root=self.initramfs_root, out_path=out_path)
 
 	def create_ramdisk(self, final_cpio):
 		self.log.debug(f"Using {self.initramfs_root} to build initramfs")

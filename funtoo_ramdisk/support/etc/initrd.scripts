@@ -74,9 +74,9 @@ do_modprobe() {
 }
 
 modules_scan() {
+  [ ! -f "/etc/mdodules/${1}" ] && bad_msg "$1 modules group doesn't exist -- skipping loading these" && return
 	[ -e "/etc/modules/${1}.done" ] && debug_msg modules_scan "$1 already done" && return
-	local MODS
-	[ -f "/etc/modules/${1}" ] && MODS="$(cat /etc/modules/${1})"
+	local MODS="$(cat /etc/modules/${1})"
 	debug_msg modules_scan "$1 start"
 	do_modprobe $MODS
 	touch /etc/modules/"${1}.done"

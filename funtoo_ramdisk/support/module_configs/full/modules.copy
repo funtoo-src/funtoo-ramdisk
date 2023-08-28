@@ -2,7 +2,11 @@
 #               located in the kernel source tree. This file is used to grab all modules to copy
 #               to the initramfs. We will also grab all dependencies of these modules.
 #
-#               You must specify to-be-included modules using globs or /** notation.
+#               You must specify to-be-included modules using:
+#               1. globs -- to grab bunches of modules that match the pattern,
+#               2. /** notation -- to grab bunches of modules in a sub-tree,
+#               3. short-name -- to find a module somewhere in the tree with that
+#                  name (don't include a '.ko') and it will be copied.
 
 [nvme]
 kernel/drivers/nvme/**
@@ -41,7 +45,7 @@ kernel/drivers/usb/typec/**
 [usb-storage]
 kernel/drivers/usb/storage/**
 
-[input]
+[usb-input]
 kernel/drivers/hid/**
 
 [filesystems]

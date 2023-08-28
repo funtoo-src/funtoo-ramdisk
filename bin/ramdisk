@@ -64,7 +64,9 @@ CLI_ARGS = {
 	"fs_root": {"default": "/", "action": "store", "help": "Root filesystem of modules to copy to initramfs, and look for kernel source."},
 	"temp_root": {"default": "/var/tmp", "action": "store", "help": "Main directory to use for temporary directory creation."},
 	"enable": {"default": "", "action": "store", "help": "Comma-delimited list of plugins to enable."},
-	"list-plugins": {"default": False, "action": "store_true"}
+	"list-plugins": {"default": False, "action": "store_true"},
+	"modconfig": {"default": "full", "action": "store", "help": "Module configuration to use; default is 'full' (include a lot)"},
+	"kpop": {"default": None, "action": "store", "help": "Minimal 'these only' modules config -- include only these and their deps (comma delimited)"}
 }
 
 args = parse_args()
@@ -183,6 +185,12 @@ following:
 			raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
 	else:
 		kernel_version = args.kernel
+	if args.kpop is None:
+		kpop = None
+	else:
+		kpop = args.kpop.split(',')
+		# --kpop implies "--modconfig=kpop"
+		args.modconfig = "kpop"
 	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=args.temp_root) as temp_dir:
 		ramdisk = InitialRamDisk(
 			action="list-plugins" if args.list_plugins else "run",
@@ -193,7 +201,9 @@ following:
 			modules_root=args.fs_root,
 			logger=log,
 			pypath=mod_path,
-			enabled_plugins=args.enable.split(",")
+			enabled_plugins=args.enable.split(","),
+			modconfig=args.modconfig,
+			kpop=kpop
 		)
 		return ramdisk.create_ramdisk(output_initramfs)
 

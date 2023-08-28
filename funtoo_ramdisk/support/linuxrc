@@ -60,13 +60,11 @@ fi
 if [ "${MOUNTED_ROOT_FS}" != '1' ] && [ "${DETECT}" != '0' ]
 then
 	good_msg "Starting modules scanning..."
-	# TODO: These groups of modules should not be hard-coded.
-	for modules in nvme ata scsi usb usb-storage
-	do
-		modules_scan ${modules}
+	while read -r section; do
+		modules_scan "${section}"
 		# The "quick" boot option: try to short-circuit module loading if we appear successful:
 		[ -n "$QUICK" ] && determine_root && mount_real_root && sanity_check_root && break
-	done
+	done < /etc/modules.autoload
 fi
 
 [ "$DEBUG_SHELL" = "yes" ] && run_shell good 'Debug shell requested, starting prior to mounting root fs'
