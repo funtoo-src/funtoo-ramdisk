@@ -299,40 +299,48 @@ the following masked modules:\n\n"""
 			if line.startswith("[") and line.endswith("]"):
 				section = line[1:-1]
 				self.autoload_sections.append(section)
+				lineno += 1
 				continue
 			elif not len(line):
+				lineno += 1
 				continue
 			elif line.startswith("#"):
+				lineno += 1
 				continue
 			if "/" not in line and not line.endswith(".ko"):
+
 				# We are directly-specifying a module name like "ext4". Make sure it was copied. This following conditional
 				# is how to check -- is it in at least one section? (remember, don't use copy_config["by_name"], as it may
 				# include masked (removed) modules:
-				if line in self.copy_config["names_in_sections"] and len(self.copy_config["names_in_sections"][line]):
-					if section not in self.copy_config["names_in_sections"][line]:
+
+				kmod = line
+				if kmod in self.copy_config["names_in_sections"] and len(self.copy_config["names_in_sections"][kmod]):
+
+					if section not in self.copy_config["names_in_sections"][kmod]:
 						self.log.warning(f"""modules.autoload, line {lineno}: You are specifying a module to autoload that was added to other sections: 
 
-  {self.copy_config['names_in_sections'][line]}
+  {self.copy_config['names_in_sections'][kmod]}
   
 You should fix this so that the module you are asking to autoload is also included in the '{section}' section.
 """)
-						out_dict[section] += [line]
-					else:
-						if line in self.builtins_by_name:
-							self.log.debug(f"Module {line} referenced in modules.autoload is built-in to the kernel.")
-						else:
-							raise ValueError(f"modules.autoload, line {lineno}: Specified kernel module {line} was not copied to initramfs and is not built-in to kernel.")
-				elif line.endswith("/**"):
-					# Recursively scan the specified directory on the initramfs for all matching
-					# already-copied modules, and set these to autoload:
-					found_mods = self.recursively_get_module_paths(line[:-3], initramfs_root)
+						out_dict[section] += [kmod]
 				else:
-					# Scan the initramfs and match glob against all already-copied modules, and set these to autoload:
-					found_mods = self.glob_walk_module_paths(line, root=initramfs_root)
-				# Convert all absolute paths of modules to raw module names, which is what the initramfs autoloader uses:
-				for mod in sorted(list(found_mods)):
-					out_dict[section] += [os.path.basename(mod)[:-3]]
-				lineno += 1
+					if kmod in self.builtins_by_name:
+						self.log.debug(f"Module {kmod} referenced in modules.autoload is built-in to the kernel.")
+					else:
+						self.log.debug(repr(self.copy_config['names_in_sections']))
+						raise ValueError(f"modules.autoload, section {section}, line {lineno}: Specified kernel module {kmod} was not copied to initramfs and is not built-in to kernel.")
+			elif line.endswith("/**"):
+				# Recursively scan the specified directory on the initramfs for all matching
+				# already-copied modules, and set these to autoload:
+				found_mods = self.recursively_get_module_paths(line[:-3], initramfs_root)
+			else:
+				# Scan the initramfs and match glob against all already-copied modules, and set these to autoload:
+				found_mods = self.glob_walk_module_paths(line, root=initramfs_root)
+			# Convert all absolute paths of modules to raw module names, which is what the initramfs autoloader uses:
+			for mod in sorted(list(found_mods)):
+				out_dict[section] += [os.path.basename(mod)[:-3]]
+			lineno += 1
 		return out_dict
 
 	def populate_initramfs(self, initial_ramdisk):

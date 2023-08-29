@@ -1,28 +1,16 @@
 #!/usr/bin/python3
-import argparse
+
 import asyncio
 import os
 import re
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.theme import Theme
-
-
-def parse_args():
-	ap = argparse.ArgumentParser()
-	for arg, kwargs in CLI_ARGS.items():
-		if "positional" in kwargs and kwargs["positional"]:
-			new_kwargs = kwargs.copy()
-			del new_kwargs["positional"]
-			ap.add_argument(arg, **new_kwargs)
-		else:
-			ap.add_argument("--" + arg, **kwargs)
-	return ap.parse_args()
-
 
 from_git = False
 
@@ -53,23 +41,171 @@ from funtoo_ramdisk.version import __version__
 if from_git:
 	__version__ += "+git"
 
-CLI_ARGS = {
-	"kernel": {"default": None, "action": "store", "nargs": "?", "help": "What kernel to use to build initramfs (default: {fs_root}/usr/src/linux symlink.)"},
-	"destination": {"default": None, "action": "store", "positional": True, "help": "The output initramfs filename to create."},
-	"debug": {"default": False, "action": "store_true"},
-	"compression": {"default": "xz", "action": "store", "help": "Compression method. One of: xz, zstd"},
-	"backtrace": {"default": False, "action": "store_true", "help": "Show full backtrace of any exception."},
-	"force": {"default": False, "action": "store_true", "help": "Force overwrite of initramfs destination if it exists."},
-	"version": {"action": "version", "version": f"funtoo-ramdisk {__version__}"},
-	"fs_root": {"default": "/", "action": "store", "help": "Root filesystem of modules to copy to initramfs, and look for kernel source."},
-	"temp_root": {"default": "/var/tmp", "action": "store", "help": "Main directory to use for temporary directory creation."},
-	"enable": {"default": "", "action": "store", "help": "Comma-delimited list of plugins to enable."},
-	"list-plugins": {"default": False, "action": "store_true"},
-	"modconfig": {"default": "full", "action": "store", "help": "Module configuration to use; default is 'full' (include a lot)"},
-	"kpop": {"default": None, "action": "store", "help": "Minimal 'these only' modules config -- include only these and their deps (comma delimited)"}
+ACTIONS = {
+	"build": None,
+	"kernel": ["list"],
+	"plugins": ["list"]
 }
 
-args = parse_args()
+ACTION_KEYS = set(sorted(ACTIONS.keys()))
+
+OPTIONAL_ARGS = {
+	"--debug": False,
+	"--backtrace": False,
+	"--force": False,
+	"--help": False,
+}
+
+BUILD_SETTINGS = {
+	"--kernel": None,
+	"--compression": "xz",
+	"--fs_root": "/",
+	"--temp_root": "/var/tmp",
+	"--enable": "",
+	"--modconfig": "full",
+	"--kpop": None,
+}
+
+# 	"version": {"action": "version", "version": f"funtoo-ramdisk {__version__}"},
+BUILD_CLI_ARGS ={
+	"destination": {"default": None, "action": "store", "positional": True, "help": "The output initramfs filename to create."},
+}
+
+
+class OptionalArgs:
+
+	default = None
+
+	def __init__(self, default_dict=None, default=False):
+		self.default = default
+		self.changed_keys = set()
+		if default_dict:
+			self.set_defaults(default_dict)
+
+	def set_defaults(self, default_dict):
+		# If we have a dictionary, treat it as a bunch of default values for a bunch of settings:
+		for key, val in default_dict.items():
+			setattr(self, key.lstrip('-'), val)
+
+	def set_value(self, key, value):
+		"""
+		Use this method to set any value!!!
+
+		You can specify key as "--foobar" or "foobar".
+		"""
+		self.changed_keys.add(key)
+		setattr(self, key.lstrip('-'), value)
+
+	def __getattr__(self, item):
+		return self.default
+
+	def __repr__(self):
+		return f"<OptionalArgs: keys: {sorted(list(self.changed_keys))}>"
+
+
+class ArgParseError(Exception):
+	pass
+
+
+def parse_opt_args(argv, find_opt_args, existing_opt_args=None):
+	"""
+	This is a key part of our custom argument parser. Given input arguments ``argv``, scan these arguments
+	for any optional arguments specified in ``find_opt_args``, which is a dictionary of key/value pairs of
+	options. Keys are literal "--foobar" values, and values in the dict can be used to set default values.
+
+	An ``OptionalArgs`` object is returned with the found optional values set to ``True``. You can also
+	pass in an ``existing_opt_args`` object if you want to collect all your optional toggles in a single
+	object. Any not-specified argument will have a ``False`` default value.
+
+	This function returns the optional arguments object, as well as any extra, unparsed arguments, which
+	could require further parsing, or potentially be invalid, unrecognized arguments.
+	"""
+	pos = 0
+	# parse main arguments -- optional and leftover actions:
+	if existing_opt_args:
+		opt_args = existing_opt_args
+		opt_args.set_defaults(find_opt_args)
+	else:
+		opt_args = OptionalArgs(default=False, default_dict=find_opt_args)
+	extra_args = []
+	while pos < len(argv):
+		arg = argv[pos]
+		if arg in find_opt_args.keys():
+			opt_args.set_value(arg.lstrip("-"), True)
+		else:
+			extra_args.append(arg)
+		pos += 1
+	return opt_args, extra_args
+
+
+def parse_opt_settings(argv, find_opt_settings, existing_opt_args=None):
+	"""
+	This function is very similar to ``find_opt_args``, above, but we assume that if any of these
+	optional settings are specified, they also come along with a value, either in the form of
+	``--foo=bar`` or ``--foo bar``. The command-line-supplied value is stored as a string in an
+	optional arguments object, which is returned with any unparsed/unrecognized arguments.
+	"""
+	pos = 0
+	# parse main arguments -- optional and leftover actions:
+	if existing_opt_args:
+		opt_args = existing_opt_args
+		opt_args.set_defaults(find_opt_settings)
+	else:
+		opt_args = OptionalArgs(default=False, default_dict=find_opt_settings)
+	extra_args = []
+	while pos < len(argv):
+		arg = argv[pos]
+		eq_pos = arg.find("=")
+		if eq_pos == -1:
+			# next argument is the value
+			pos += 1
+			if arg not in find_opt_settings:
+				extra_args.append(arg)
+				continue
+			if pos >= len(argv):
+				raise ArgParseError(f"Command-line setting '{arg}' requires a value, set with either '{arg}=val' or '{arg} val'")
+			arg_key = arg
+			arg_val = argv[pos]
+		else:
+			# include --foo=bar value:
+			arg_key = arg[:eq_pos]
+			arg_val = arg[eq_pos+1:]
+		if arg_key in find_opt_settings:
+			opt_args.set_value(arg_key.lstrip('-'), arg_val)
+		else:
+			extra_args.append(arg)
+		pos += 1
+	return opt_args, extra_args
+
+
+def parse_action(argv, actions, default_action=None):
+	"""
+	Given input arguments ``argv``, and a set of possible valid actions inside ``actions``, and a possible
+	default action specified in ``default_action``, parse all input arguments, and return the detected action,
+	plus any unparsed/unrecognized arguments.
+
+	``ArgParseError`` will be thrown if:
+
+	1. More than one valid action specified.
+	2. No action specified, and no default action.
+	"""
+	action = None
+	extra_args = []
+	for arg in argv:
+		if arg in actions:
+			if action:
+				raise ArgParseError(f"Duplicate action '{arg}' -- '{action}' already specified.")
+			else:
+				action = arg
+		else:
+			# This could be sub-options for a specific action:
+			extra_args.append(arg)
+	if action is None:
+		if default_action:
+			action = default_action
+		else:
+			raise ArgParseError(f"No action specified. Specify one of: {' '.join(sorted(actions))}")
+	return action, extra_args
 
 
 class FakeLogger:
@@ -81,6 +217,9 @@ class FakeLogger:
 		self.theme = Theme({"ramdisk.stats": "bold magenta"})
 		self.console = Console(highlighter=None, theme=self.theme)
 		self.debug_mode = debug
+
+	def enable_debug(self):
+		self.debug_mode = True
 
 	def info(self, msg):
 		self.console.print(" [turquoise2]::[default] " + msg)
@@ -103,22 +242,55 @@ class FakeLogger:
 		self.console.print_exception(show_locals=show_locals)
 
 
-log = FakeLogger(debug=args.debug)
+def get_kernel_version_from_symlink(kernel_link):
+	"""
+	Provide a symlink, which could be either ``/usr/src/linux`` or ``/lib/modules/<kv>/sources``, and this will extract
+	the version info from the Makefile, and return it as a single formatted string containing the full kernel
+	version.
 
-if args.debug:
-	log.info("DEBUG enabled.")
-if args.backtrace:
-	from rich.traceback import install
-	install(show_locals=True)
+	Typically, modules for this kernel can be found at ``/lib/modules/<kernel version>``.
+	"""
+	link_target = os.readlink(kernel_link)
+	link_target = os.path.join(os.path.dirname(kernel_link), link_target)
+	if not os.path.exists(link_target):
+		raise FileNotFoundError(f"Could not find kernel from symlink {kernel_link} -- looking for {link_target} symlink target.")
+	# grab data from Makefile, so we can determine correct kernel name for finding modules:
+	datums = ["VERSION", "PATCHLEVEL", "SUBLEVEL", "EXTRAVERSION"]
+	got_datums = {}
+	with open(os.path.join(link_target, "Makefile"), "r") as mkf:
+		while len(got_datums.keys()) != 4:
+			line = mkf.readline()
+			if not line:
+				break
+			for datum in datums:
+				if datum not in got_datums:
+					if line.startswith(f"{datum} ="):
+						got_datums[datum] = line.split("=")[1].strip()
+	if len(got_datums.keys()) != 4:
+		raise ValueError(f"Could not extract: {datums} from {kernel_link}/Makefile.")
+	return "{VERSION}.{PATCHLEVEL}.{SUBLEVEL}{EXTRAVERSION}".format(**got_datums)
 
 
-async def main_thread():
-	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
-	if from_git:
-		log.info(f"Running from git repository [turquoise2]{os.path.dirname(proj_path)}[default]")
-	output_initramfs = os.path.abspath(args.destination)
-	if os.path.exists(output_initramfs) and not args.force:
-		raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
+def get_modpath_and_kv_from_linux_symlink():
+	kernel_link = os.path.join(args.fs_root, "usr/src/linux")
+	log.info(f"No kernel specified, so going to try to use [turquoise2]{kernel_link}[default] symlink.")
+	if not os.path.islink(kernel_link):
+		raise FileNotFoundError(f"{kernel_link} does not exist or is not a symlink.")
+
+	kernel_version = get_kernel_version_from_symlink(kernel_link)
+
+	module_path = os.path.join(args.fs_root, f"lib/modules/{kernel_version}")
+	if not os.path.exists(module_path):
+		raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
+	return module_path, kernel_version
+
+
+def get_current_kernel_version():
+	status, current_version = subprocess.getstatusoutput("uname -r")
+	return current_version.strip()
+
+
+def fstab_sanity_check():
 	fstab = ConfigFstab()
 	root_entry = fstab.get_line_by_mount("/")
 	if re.match("^/dev/sd.*", root_entry[0]):
@@ -130,90 +302,104 @@ async def main_thread():
 		if not uuid:
 			raise ValueError(f"command: '{cmd}' was unable to give us a UUID.")
 		log.warning(f"""Detected root device {root_entry[0]}, which could be a problem if you have more
-than one ATA/SCSI disk. Since /dev/sd* device nodes are not consistently 
-assigned, the initramfs could see this as a different device. Please do the the
-following:
+	than one ATA/SCSI disk. Since /dev/sd* device nodes are not consistently 
+	assigned, the initramfs could see this as a different device. Please do the the
+	following:
 
-1. In /etc/fstab, change your root entry from:
+	1. In /etc/fstab, change your root entry from:
 
-   {'    '.join(root_entry)} 
-   
-   to:
-   
-   UUID={uuid}    {'    '.join(root_entry[1:])}
+	   {'    '.join(root_entry)} 
 
-2. *Re-run* ego boot update so that GRUB will look for your root block device
-    by UUID.
+	   to:
 
-3. This problem should now be resolved, since now you are referring to the root
-   block device using a UUID which will not change. Now, go ahead and try to
-   create your ramdisk again.
-	""")
-	os.makedirs(os.path.dirname(output_initramfs), exist_ok=True)
-	kernel_link = os.path.join(args.fs_root, "usr/src/linux")
-	if args.kernel is None:
-		log.info(f"No kernel specified, so going to try to use [turquoise2]{kernel_link}[default] symlink.")
-		if not os.path.islink(kernel_link):
-			raise FileNotFoundError(f"{kernel_link} does not exist or is not a symlink.")
-		link_target = os.readlink(kernel_link)
-		link_target = os.path.join(os.path.dirname(kernel_link), link_target)
-		if not os.path.exists(link_target):
-			raise FileNotFoundError(f"Could not find kernel from symlink {kernel_link} -- looking for {link_target} symlink target.")
-		# grab data from Makefile, so we can determine correct kernel name for finding modules:
-		datums = ["VERSION", "PATCHLEVEL", "SUBLEVEL", "EXTRAVERSION"]
-		got_datums = {}
-		with open(os.path.join(link_target, "Makefile"), "r") as mkf:
-			while len(got_datums.keys()) != 4:
-				line = mkf.readline()
-				if not line:
-					break
-				for datum in datums:
-					if datum not in got_datums:
-						if line.startswith(f"{datum} ="):
-							got_datums[datum] = line.split("=")[1].strip()
-		if len(got_datums.keys()) != 4:
-			raise ValueError(f"Could not extract: {datums} from {kernel_link}/Makefile.")
-		kernel_version = "{VERSION}.{PATCHLEVEL}.{SUBLEVEL}{EXTRAVERSION}".format(**got_datums)
-		status, current_version = subprocess.getstatusoutput("uname -r")
-		current_version = current_version.strip()
-		if kernel_version == current_version:
-			log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel)")
-		else:
-			log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel is: [bright cyan]{current_version}[default]).")
-		module_path = os.path.join(args.fs_root, f"lib/modules/{kernel_version}")
-		if not os.path.exists(module_path):
-			raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
+	   UUID={uuid}    {'    '.join(root_entry[1:])}
+
+	2. *Re-run* ego boot update so that GRUB will look for your root block device
+	    by UUID.
+
+	3. This problem should now be resolved, since now you are referring to the root
+	   block device using a UUID which will not change. Now, go ahead and try to
+	   create your ramdisk again.
+		""")
+
+
+async def main_thread(action: str, opt_args: OptionalArgs, extra_args):
+	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
+	if from_git:
+		log.info(f"Running from git repository [turquoise2]{os.path.dirname(proj_path)}[default]")
+
+	if action == "help":
+		help()
+		sys.exit(1)
+
+	kernel_version = get_kernel_version_from_symlink("/usr/src/linux")
+	current_version = get_current_kernel_version()
+	if kernel_version == current_version:
+		log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel)")
 	else:
-		kernel_version = args.kernel
-	if args.kpop is None:
+		log.info(
+			f"Found: [orange1]{kernel_version}[default] (currently-active kernel is: [bright cyan]{current_version}[default]).")
+	if opt_args.kpop is None:
 		kpop = None
 	else:
-		kpop = args.kpop.split(',')
+		kpop = opt_args.kpop.split(',')
 		# --kpop implies "--modconfig=kpop"
-		args.modconfig = "kpop"
-	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=args.temp_root) as temp_dir:
+		opt_args.modconfig = "kpop"
+	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=opt_args.temp_root) as temp_dir:
 		ramdisk = InitialRamDisk(
-			action="list-plugins" if args.list_plugins else "run",
+			action=action,
 			temp_root=temp_dir,
 			support_root=support_root,
 			kernel_version=kernel_version,
-			compression=args.compression,
-			modules_root=args.fs_root,
+			compression=opt_args.compression,
+			modules_root=opt_args.fs_root,
 			logger=log,
 			pypath=mod_path,
-			enabled_plugins=args.enable.split(","),
-			modconfig=args.modconfig,
+			enabled_plugins=opt_args.enable.split(","),
+			modconfig=opt_args.modconfig,
 			kpop=kpop
 		)
-		return ramdisk.create_ramdisk(output_initramfs)
+		if action == "build":
+			if len(extra_args) == 0:
+				raise ArgParseError("Expecting a destination to be specified for the output initramfs.")
+			elif len(extra_args) > 1:
+				raise ArgParseError(f"Unrecognized arguments: {' '.join(extra_args[1:])}")
+			output_initramfs = os.path.abspath(extra_args[-1])
+			if os.path.exists(output_initramfs) and not opt_args.force:
+				raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
+			fstab_sanity_check()
+			return ramdisk.create_ramdisk(output_initramfs)
+		else:
+			raise ValueError(f"Action {action} not yet supported.")
+
+
+def help():
+	print("help!")
+
 
 if __name__ == "__main__":
-	success = True
+	log = FakeLogger()
+	opt_args = None
+
+	# Get optional args, and actions/unknown args in extra_args:
 	try:
-		success = asyncio.run(main_thread())
+		opt_args, extra_args = parse_opt_args(sys.argv[1:], OPTIONAL_ARGS)
+		action, extra_args = parse_action(extra_args, ACTION_KEYS, default_action="build")
+		if opt_args.help:
+			action = "help"
+		elif action == "build":
+			opt_args, extra_args = parse_opt_settings(extra_args, BUILD_SETTINGS, existing_opt_args=opt_args)
+		if opt_args.debug:
+			log.info("DEBUG enabled.")
+			log.enable_debug()
+		if opt_args.backtrace:
+			from rich.traceback import install
+			install(show_locals=True)
+
+		success = asyncio.run(main_thread(action, opt_args, extra_args))
 	except Exception as e:
 		log.error(f"{e.__class__.__name__}: {e}")
-		if args.backtrace:
+		if opt_args and opt_args.backtrace:
 			log.print_exception(show_locals=False)
 		success = False
 	if not success:
