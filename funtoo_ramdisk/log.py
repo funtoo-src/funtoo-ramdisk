@@ -2,6 +2,8 @@ from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.theme import Theme
 
+LOGGER = None
+
 
 class FakeLogger:
 	class MyHighlighter(RegexHighlighter):
@@ -37,3 +39,12 @@ class FakeLogger:
 
 	def print_exception(self, show_locals=False):
 		self.console.print_exception(show_locals=show_locals)
+
+
+if LOGGER is None:
+	LOGGER = FakeLogger()
+
+
+def get_logger():
+	global LOGGER
+	return LOGGER

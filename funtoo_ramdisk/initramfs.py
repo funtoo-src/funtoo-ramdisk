@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 import importlib
-import logging
 import os
 import pkgutil
 import shutil
 import site
 import subprocess
 
-from .modules import ModuleScanner
-from .utilities import copy_binary, iter_lines
+from funtoo_ramdisk.log import get_logger
+from funtoo_ramdisk.modules import ModuleScanner
+from funtoo_ramdisk.utilities import copy_binary, iter_lines
 
 
 class InitialRamDisk:
@@ -42,7 +42,6 @@ class InitialRamDisk:
 
 	def __init__(self, action, temp_root, support_root, kernel_version, compression,
 				modules_root="/",
-				logger=None,
 				pypath=None,
 				enabled_plugins=None,
 				modconfig="full",
@@ -63,10 +62,7 @@ class InitialRamDisk:
 			self.py_mod_path = [os.path.join(pypath, "plugins")]
 		else:
 			self.py_mod_path = [site.getsitepackages(), "funtoo_ramdisk/plugins"]
-		if logger:
-			self.log = logger
-		else:
-			self.log = logging.getLogger("ramdisk")
+		self.log = get_logger()
 		if self.modconfig == "kpop":
 			if not self.kpop:
 				raise ValueError("The kpop option requires a list of modules specified to include.")

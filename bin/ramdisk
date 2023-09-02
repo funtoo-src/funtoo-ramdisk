@@ -2,10 +2,10 @@
 
 import asyncio
 import os
-import re
 import subprocess
 import sys
 import tempfile
+
 
 from_git = False
 
@@ -30,12 +30,12 @@ if not from_git:
 	support_root = os.path.normpath(os.path.join(funtoo_ramdisk.__file__, "../support"))
 
 from funtoo_ramdisk.initramfs import InitialRamDisk
-from funtoo_ramdisk.config_files import ConfigFstab
 from funtoo_ramdisk.version import __version__
 from funtoo_ramdisk.const import ACTION_KEYS, OPTIONAL_ARGS, BUILD_SETTINGS
 from funtoo_ramdisk.args import OptionalArgs, ArgParseError, parse_opt_args, parse_opt_settings, parse_action
-from funtoo_ramdisk.log import FakeLogger
-
+from funtoo_ramdisk.config_files import fstab_sanity_check
+from funtoo_ramdisk.log import get_logger
+log = get_logger()
 
 if from_git:
 	__version__ += "+git"
@@ -89,43 +89,6 @@ def get_current_kernel_version():
 	return current_version.strip()
 
 
-def fstab_sanity_check():
-	fstab = ConfigFstab()
-	try:
-		root_entry = fstab.get_line_by_mount("/")
-	except KeyError:
-		log.warning("Cannot find '/' mount point in /etc/fstab -- assuming not-yet-configured system or metro build.")
-		return
-	if re.match("^/dev/sd.*", root_entry[0]):
-		cmd = f"/sbin/blkid -s UUID -o value {root_entry[0]}"
-		status, uuid = subprocess.getstatusoutput(cmd)
-		if status != 0:
-			raise ValueError(f"command: '{cmd}' failed with exit code {status}.")
-		uuid = uuid.strip()
-		if not uuid:
-			raise ValueError(f"command: '{cmd}' was unable to give us a UUID.")
-		log.warning(f"""Detected root device {root_entry[0]}, which could be a problem if you have more
-	than one ATA/SCSI disk. Since /dev/sd* device nodes are not consistently 
-	assigned, the initramfs could see this as a different device. Please do the the
-	following:
-
-	1. In /etc/fstab, change your root entry from:
-
-	   {'    '.join(root_entry)} 
-
-	   to:
-
-	   UUID={uuid}    {'    '.join(root_entry[1:])}
-
-	2. *Re-run* ego boot update so that GRUB will look for your root block device
-	    by UUID.
-
-	3. This problem should now be resolved, since now you are referring to the root
-	   block device using a UUID which will not change. Now, go ahead and try to
-	   create your ramdisk again.
-		""")
-
-
 async def main_thread(action: str, opt_args: OptionalArgs, extra_args):
 	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
 	if from_git:
@@ -156,7 +119,6 @@ async def main_thread(action: str, opt_args: OptionalArgs, extra_args):
 			kernel_version=kernel_version,
 			compression=opt_args.compression,
 			modules_root=opt_args.fs_root,
-			logger=log,
 			pypath=mod_path,
 			enabled_plugins=opt_args.enable.split(","),
 			modconfig=opt_args.modconfig,
@@ -181,7 +143,6 @@ def help():
 
 
 if __name__ == "__main__":
-	log = FakeLogger()
 	opt_args = None
 
 	# Get optional args, and actions/unknown args in extra_args:
