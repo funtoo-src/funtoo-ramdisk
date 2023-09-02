@@ -2,10 +2,7 @@
 
 import asyncio
 import os
-import subprocess
 import sys
-import tempfile
-
 
 from_git = False
 
@@ -32,8 +29,8 @@ if not from_git:
 from funtoo_ramdisk.initramfs import InitialRamDisk
 from funtoo_ramdisk.version import __version__
 from funtoo_ramdisk.const import ACTION_KEYS, OPTIONAL_ARGS, BUILD_SETTINGS
-from funtoo_ramdisk.args import OptionalArgs, ArgParseError, parse_opt_args, parse_opt_settings, parse_action
-from funtoo_ramdisk.config_files import fstab_sanity_check
+from funtoo_ramdisk.args import Arguments
+from funtoo_ramdisk.kernel import get_kernel_version_from_symlink, get_current_kernel_version
 from funtoo_ramdisk.log import get_logger
 log = get_logger()
 
@@ -41,60 +38,12 @@ if from_git:
 	__version__ += "+git"
 
 
-def get_kernel_version_from_symlink(kernel_link):
-	"""
-	Provide a symlink, which could be either ``/usr/src/linux`` or ``/lib/modules/<kv>/sources``, and this will extract
-	the version info from the Makefile, and return it as a single formatted string containing the full kernel
-	version.
-
-	Typically, modules for this kernel can be found at ``/lib/modules/<kernel version>``.
-	"""
-	link_target = os.readlink(kernel_link)
-	link_target = os.path.join(os.path.dirname(kernel_link), link_target)
-	if not os.path.exists(link_target):
-		raise FileNotFoundError(f"Could not find kernel from symlink {kernel_link} -- looking for {link_target} symlink target.")
-	# grab data from Makefile, so we can determine correct kernel name for finding modules:
-	datums = ["VERSION", "PATCHLEVEL", "SUBLEVEL", "EXTRAVERSION"]
-	got_datums = {}
-	with open(os.path.join(link_target, "Makefile"), "r") as mkf:
-		while len(got_datums.keys()) != 4:
-			line = mkf.readline()
-			if not line:
-				break
-			for datum in datums:
-				if datum not in got_datums:
-					if line.startswith(f"{datum} ="):
-						got_datums[datum] = line.split("=")[1].strip()
-	if len(got_datums.keys()) != 4:
-		raise ValueError(f"Could not extract: {datums} from {kernel_link}/Makefile.")
-	return "{VERSION}.{PATCHLEVEL}.{SUBLEVEL}{EXTRAVERSION}".format(**got_datums)
-
-
-def get_modpath_and_kv_from_linux_symlink():
-	kernel_link = os.path.join(args.fs_root, "usr/src/linux")
-	log.info(f"No kernel specified, so going to try to use [turquoise2]{kernel_link}[default] symlink.")
-	if not os.path.islink(kernel_link):
-		raise FileNotFoundError(f"{kernel_link} does not exist or is not a symlink.")
-
-	kernel_version = get_kernel_version_from_symlink(kernel_link)
-
-	module_path = os.path.join(args.fs_root, f"lib/modules/{kernel_version}")
-	if not os.path.exists(module_path):
-		raise FileNotFoundError(f"Expected kernel module path {module_path} not found.")
-	return module_path, kernel_version
-
-
-def get_current_kernel_version():
-	status, current_version = subprocess.getstatusoutput("uname -r")
-	return current_version.strip()
-
-
-async def main_thread(action: str, opt_args: OptionalArgs, extra_args):
+async def main_thread(args: Arguments):
 	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
 	if from_git:
 		log.info(f"Running from git repository [turquoise2]{os.path.dirname(proj_path)}[default]")
 
-	if action == "help":
+	if args.action == "help":
 		help()
 		sys.exit(1)
 
@@ -105,37 +54,24 @@ async def main_thread(action: str, opt_args: OptionalArgs, extra_args):
 	else:
 		log.info(
 			f"Found: [orange1]{kernel_version}[default] (currently-active kernel is: [bright cyan]{current_version}[default]).")
-	if opt_args.kpop is None:
+	if args.opt_args.kpop is None:
 		kpop = None
 	else:
-		kpop = opt_args.kpop.split(',')
+		kpop = args.opt_args.kpop.split(',')
 		# --kpop implies "--modconfig=kpop"
-		opt_args.modconfig = "kpop"
-	with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=opt_args.temp_root) as temp_dir:
-		ramdisk = InitialRamDisk(
-			action=action,
-			temp_root=temp_dir,
-			support_root=support_root,
-			kernel_version=kernel_version,
-			compression=opt_args.compression,
-			modules_root=opt_args.fs_root,
-			pypath=mod_path,
-			enabled_plugins=opt_args.enable.split(","),
-			modconfig=opt_args.modconfig,
-			kpop=kpop
-		)
-		if action == "build":
-			if len(extra_args) == 0:
-				raise ArgParseError("Expecting a destination to be specified for the output initramfs.")
-			elif len(extra_args) > 1:
-				raise ArgParseError(f"Unrecognized arguments: {' '.join(extra_args[1:])}")
-			output_initramfs = os.path.abspath(extra_args[-1])
-			if os.path.exists(output_initramfs) and not opt_args.force:
-				raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
-			fstab_sanity_check()
-			return ramdisk.create_ramdisk(output_initramfs)
-		else:
-			raise ValueError(f"Action {action} not yet supported.")
+		args.opt_args.modconfig = "kpop"
+
+	ramdisk = InitialRamDisk(
+		args=args,
+		support_root=support_root,
+		kernel_version=kernel_version,
+		pypath=mod_path,
+		kpop=kpop
+	)
+	if args.action == "build":
+		return ramdisk.create_ramdisk()
+	else:
+		raise ValueError(f"Action {args.action} not yet supported.")
 
 
 def help():
@@ -143,27 +79,25 @@ def help():
 
 
 if __name__ == "__main__":
-	opt_args = None
-
+	args = Arguments(find_opt_args=OPTIONAL_ARGS, defined_actions=ACTION_KEYS, find_opt_settings=BUILD_SETTINGS, default_action="build")
 	# Get optional args, and actions/unknown args in extra_args:
 	try:
-		opt_args, extra_args = parse_opt_args(sys.argv[1:], OPTIONAL_ARGS)
-		action, extra_args = parse_action(extra_args, ACTION_KEYS, default_action="build")
-		if opt_args.help:
-			action = "help"
-		elif action == "build":
-			opt_args, extra_args = parse_opt_settings(extra_args, BUILD_SETTINGS, existing_opt_args=opt_args)
-		if opt_args.debug:
+		args.parse_opt_args()
+		args.parse_action()
+		if args.opt_args.help:
+			args.action = "help"
+		elif args.action == "build":
+			args.parse_opt_settings()
+		if args.opt_args.debug:
 			log.info("DEBUG enabled.")
 			log.enable_debug()
-		if opt_args.backtrace:
+		if args.opt_args.backtrace:
 			from rich.traceback import install
 			install(show_locals=True)
-
-		success = asyncio.run(main_thread(action, opt_args, extra_args))
+		success = asyncio.run(main_thread(args))
 	except Exception as e:
 		log.error(f"{e.__class__.__name__}: {e}")
-		if opt_args and opt_args.backtrace:
+		if args.opt_args and args.opt_args.backtrace:
 			log.print_exception(show_locals=False)
 		success = False
 	if not success:

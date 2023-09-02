@@ -5,7 +5,10 @@ import pkgutil
 import shutil
 import site
 import subprocess
+import tempfile
 
+from funtoo_ramdisk.args import ArgParseError
+from funtoo_ramdisk.config_files import fstab_sanity_check
 from funtoo_ramdisk.log import get_logger
 from funtoo_ramdisk.modules import ModuleScanner
 from funtoo_ramdisk.utilities import copy_binary, iter_lines
@@ -40,24 +43,27 @@ class InitialRamDisk:
 		}
 	}
 
-	def __init__(self, action, temp_root, support_root, kernel_version, compression,
-				modules_root="/",
+	def __init__(self, args, support_root, kernel_version,
 				pypath=None,
-				enabled_plugins=None,
-				modconfig="full",
 				kpop=None,
 		):
-		self.kpop = kpop
-		self.modconfig = modconfig
-		self.action = action
+		self.args = args
+		if self.args.opt_args.compression not in self.comp_methods.keys():
+			raise ValueError(f"Specified compression method must be one of: {' '.join(sorted(list(self.comp_methods.keys())))}.")
+		self.compression = self.args.opt_args.compression
+		self.modules_root = self.args.opt_args.fs_root
 		self.enabled_plugins = {"core"}
-		if enabled_plugins:
+		if self.args.opt_args.enable:
+			enabled_plugins = self.args.opt_args.enable.split(",")
 			self.enabled_plugins |= set(enabled_plugins)
-		self.temp_root = temp_root
-		self.initramfs_root = os.path.join(self.temp_root, "initramfs")
-		os.makedirs(self.initramfs_root)
+
+		self.modconfig = self.args.opt_args.modconfig
+		# temp_root and initramfs_root get initialized in ``create_ramdisk()`` method:
+		self.temp_root = None
+		self.initramfs_root = None
+
+		self.kpop = kpop
 		self.support_root = support_root
-		self.modules_root = modules_root
 		if pypath is not None:
 			self.py_mod_path = [os.path.join(pypath, "plugins")]
 		else:
@@ -83,9 +89,7 @@ class InitialRamDisk:
 		self.size_initial = None
 		self.size_final = None
 		self.size_compressed = None
-		if compression not in self.comp_methods.keys():
-			raise ValueError(f"Specified compression method must be one of: {' '.join(sorted(list(self.comp_methods.keys())))}.")
-		self.compression = compression
+
 		self.plugins = {}
 		for plugin in pkgutil.iter_modules(self.py_mod_path, "funtoo_ramdisk.plugins."):
 			mod = importlib.import_module(plugin.name)
@@ -200,25 +204,36 @@ class InitialRamDisk:
 	def copy_binary(self, binary, out_path=None):
 		copy_binary(binary, dest_root=self.initramfs_root, out_path=out_path)
 
-	def create_ramdisk(self, final_cpio):
-		self.log.debug(f"Using {self.initramfs_root} to build initramfs")
-		self.log.info(f"Creating initramfs...")
-		self.create_baselayout()
-		self.create_fstab()
-		self.setup_linuxrc_and_etc()
-		self.setup_busybox()
-		success = self.iter_plugins()
-		if not success:
-			return False
-		self.copy_modules()
-		# TODO: add firmware?
-		# TODO: this needs cleaning up:
-		self.create_ramdisk_binary()
-		out_cpio = self.compress_ramdisk()
-		os.makedirs(os.path.dirname(final_cpio), exist_ok=True)
-		shutil.copy(out_cpio, final_cpio)
-		self.log.info(f"Orig. Size:  [turquoise2]{self.size_initial / 1000000:6.2f} MiB[default]")
-		self.log.info(f"Final Size:  [turquoise2]{self.size_final / 1000000:6.2f} MiB[default]")
-		self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
-		self.log.done(f"Created:     [orange1]{final_cpio}[default]")
-		return True
+	def create_ramdisk(self):
+		with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=self.args.opt_args.temp_root) as self.temp_root:
+			self.initramfs_root = os.path.join(self.temp_root, "initramfs")
+			os.makedirs(self.initramfs_root)
+			if len(self.args.unparsed_args) == 0:
+				raise ArgParseError("Expecting a destination to be specified for the output initramfs.")
+			elif len(self.args.unparsed_args) > 1:
+				raise ArgParseError(f"Unrecognized arguments: {' '.join(self.args.unparsed_args[1:])}")
+			final_cpio = os.path.abspath(self.args.unparsed_args[-1])
+			if os.path.exists(final_cpio) and not self.args.opt_args.force:
+				raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
+			fstab_sanity_check()
+			self.log.debug(f"Using {self.initramfs_root} to build initramfs")
+			self.log.info(f"Creating initramfs...")
+			self.create_baselayout()
+			self.create_fstab()
+			self.setup_linuxrc_and_etc()
+			self.setup_busybox()
+			success = self.iter_plugins()
+			if not success:
+				return False
+			self.copy_modules()
+			# TODO: add firmware?
+			# TODO: this needs cleaning up:
+			self.create_ramdisk_binary()
+			out_cpio = self.compress_ramdisk()
+			os.makedirs(os.path.dirname(final_cpio), exist_ok=True)
+			shutil.copy(out_cpio, final_cpio)
+			self.log.info(f"Orig. Size:  [turquoise2]{self.size_initial / 1000000:6.2f} MiB[default]")
+			self.log.info(f"Final Size:  [turquoise2]{self.size_final / 1000000:6.2f} MiB[default]")
+			self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
+			self.log.done(f"Created:     [orange1]{final_cpio}[default]")
+			return True
