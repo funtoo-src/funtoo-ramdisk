@@ -5,7 +5,7 @@ import os
 import sys
 
 from_git = False
-
+git_path = None
 f_path = os.path.dirname(os.path.realpath(__file__))
 proj_path = os.path.normpath(os.path.join(f_path, "../.git"))
 mod_path = None
@@ -20,6 +20,7 @@ if os.path.isdir(proj_path):
 	from_git = True
 	sys.path.insert(0, base_path)
 	support_root = os.path.join(mod_path, "support")
+	git_path = proj_path
 
 if not from_git:
 	# import the module just to use it to get the path to the files.
@@ -28,76 +29,34 @@ if not from_git:
 
 from funtoo_ramdisk.initramfs import InitialRamDisk
 from funtoo_ramdisk.version import __version__
-from funtoo_ramdisk.const import ACTION_KEYS, OPTIONAL_ARGS, BUILD_SETTINGS
+from funtoo_ramdisk.const import RamDiskArguments
 from funtoo_ramdisk.args import Arguments
-from funtoo_ramdisk.kernel import get_kernel_version_from_symlink, get_current_kernel_version
 from funtoo_ramdisk.log import get_logger
 log = get_logger()
+
 
 if from_git:
 	__version__ += "+git"
 
 
 async def main_thread(args: Arguments):
-	log.warning(f"[turquoise2]funtoo-ramdisk [orange1]{__version__}[default] [grey63]:wolf:[default]")
-	if from_git:
-		log.info(f"Running from git repository [turquoise2]{os.path.dirname(proj_path)}[default]")
-
-	if args.action == "help":
-		help()
-		sys.exit(1)
-
-	kernel_version = get_kernel_version_from_symlink("/usr/src/linux")
-	current_version = get_current_kernel_version()
-	if kernel_version == current_version:
-		log.info(f"Found: [orange1]{kernel_version}[default] (currently-active kernel)")
-	else:
-		log.info(
-			f"Found: [orange1]{kernel_version}[default] (currently-active kernel is: [bright cyan]{current_version}[default]).")
-	if args.opt_args.kpop is None:
-		kpop = None
-	else:
-		kpop = args.opt_args.kpop.split(',')
-		# --kpop implies "--modconfig=kpop"
-		args.opt_args.modconfig = "kpop"
-
 	ramdisk = InitialRamDisk(
 		args=args,
 		support_root=support_root,
-		kernel_version=kernel_version,
 		pypath=mod_path,
-		kpop=kpop
 	)
-	if args.action == "build":
-		return ramdisk.create_ramdisk()
-	else:
-		raise ValueError(f"Action {args.action} not yet supported.")
-
-
-def help():
-	print("help!")
+	ramdisk.run()
 
 
 if __name__ == "__main__":
-	args = Arguments(find_opt_args=OPTIONAL_ARGS, defined_actions=ACTION_KEYS, find_opt_settings=BUILD_SETTINGS, default_action="build")
+	args = RamDiskArguments(app="funtoo-ramdisk", version=__version__, from_git=from_git, git_path=git_path)
 	# Get optional args, and actions/unknown args in extra_args:
 	try:
-		args.parse_opt_args()
-		args.parse_action()
-		if args.opt_args.help:
-			args.action = "help"
-		elif args.action == "build":
-			args.parse_opt_settings()
-		if args.opt_args.debug:
-			log.info("DEBUG enabled.")
-			log.enable_debug()
-		if args.opt_args.backtrace:
-			from rich.traceback import install
-			install(show_locals=True)
+		args.parse()
 		success = asyncio.run(main_thread(args))
 	except Exception as e:
 		log.error(f"{e.__class__.__name__}: {e}")
-		if args.opt_args and args.opt_args.backtrace:
+		if args.values and args.values.backtrace:
 			log.print_exception(show_locals=False)
 		success = False
 	if not success:

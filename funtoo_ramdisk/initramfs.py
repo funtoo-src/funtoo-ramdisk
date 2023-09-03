@@ -7,11 +7,11 @@ import site
 import subprocess
 import tempfile
 
-from funtoo_ramdisk.args import ArgParseError
 from funtoo_ramdisk.config_files import fstab_sanity_check
 from funtoo_ramdisk.log import get_logger
 from funtoo_ramdisk.modules import ModuleScanner
 from funtoo_ramdisk.utilities import copy_binary, iter_lines
+from funtoo_ramdisk.kernel import get_kernel_version_from_symlink, get_current_kernel_version, get_link_target
 
 
 class InitialRamDisk:
@@ -32,63 +32,14 @@ class InitialRamDisk:
 		"usr/sbin"
 	]
 
-	comp_methods = {
-		"xz": {
-			"ext": "xz",
-			"cmd": ["xz", "-e", "-T 0", "--check=none", "-z", "-f", "-5", "-c"]
-		},
-		"zstd": {
-			"ext": "zst",
-			"cmd": ["zstd", "-f", "-10", "-c"]
-		}
-	}
-
-	def __init__(self, args, support_root, kernel_version,
-				pypath=None,
-				kpop=None,
-		):
+	def __init__(self, args, support_root, pypath=None):
+		self.log = get_logger()
 		self.args = args
-		if self.args.opt_args.compression not in self.comp_methods.keys():
-			raise ValueError(f"Specified compression method must be one of: {' '.join(sorted(list(self.comp_methods.keys())))}.")
-		self.compression = self.args.opt_args.compression
-		self.modules_root = self.args.opt_args.fs_root
-		self.enabled_plugins = {"core"}
-		if self.args.opt_args.enable:
-			enabled_plugins = self.args.opt_args.enable.split(",")
-			self.enabled_plugins |= set(enabled_plugins)
 
-		self.modconfig = self.args.opt_args.modconfig
-		# temp_root and initramfs_root get initialized in ``create_ramdisk()`` method:
-		self.temp_root = None
-		self.initramfs_root = None
-
-		self.kpop = kpop
-		self.support_root = support_root
 		if pypath is not None:
 			self.py_mod_path = [os.path.join(pypath, "plugins")]
 		else:
 			self.py_mod_path = [site.getsitepackages(), "funtoo_ramdisk/plugins"]
-		self.log = get_logger()
-		if self.modconfig == "kpop":
-			if not self.kpop:
-				raise ValueError("The kpop option requires a list of modules specified to include.")
-			copy_lines = autoload_lines = iter([
-				"[kpop]",
-			] + self.kpop)
-		else:
-			copy_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.modconfig, "modules.copy"))
-			autoload_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.modconfig, "modules.autoload"))
-		self.module_scanner = ModuleScanner(
-			self.modconfig,
-			kernel_version=kernel_version,
-			root=self.modules_root,
-			logger=self.log,
-			copy_lines=copy_lines,
-			autoload_lines=autoload_lines
-		)
-		self.size_initial = None
-		self.size_final = None
-		self.size_compressed = None
 
 		self.plugins = {}
 		for plugin in pkgutil.iter_modules(self.py_mod_path, "funtoo_ramdisk.plugins."):
@@ -100,14 +51,25 @@ class InitialRamDisk:
 				for plugin_obj in iter_plugins():
 					plugin_obj_inst = plugin_obj(self)
 					self.plugins[plugin_obj.key] = plugin_obj_inst
-		if self.plugins:
-			out_list = []
-			for plugin in sorted(self.plugins.keys()):
-				if plugin in self.enabled_plugins:
-					out_list.append(f"[orange1]{plugin}[default]")
-				else:
-					out_list.append(f"[turquoise2]{plugin}[default]")
-			self.log.info(f"Registered plugins: {'/'.join(out_list)}")
+
+		# Initramfs-creation-related variables:
+
+		self.temp_root = None
+		self.initramfs_root = None
+		self.kpop = self.args.values.kpop
+		self.support_root = support_root
+		self.compression = self.args.values.compression
+		self.module_scanner = None
+		self.size_initial = None
+		self.size_final = None
+		self.size_compressed = None
+		# When creating initramfs, enable correct plugins:
+		self.enabled_plugins = {"core"}
+		if self.args.values.enable:
+			enabled_plugins = self.args.values.enable.split(",")
+			self.enabled_plugins |= set(enabled_plugins)
+		self.kernel_version = None
+		self.current_version = None
 
 	def iter_plugins(self):
 		for plugin in self.plugins.keys():
@@ -178,8 +140,8 @@ class InitialRamDisk:
 		self.log.debug(f"Created {self.temp_initramfs} / Size: {self.size_initial / 1000000:.2f} MiB")
 
 	def compress_ramdisk(self):
-		ext = self.comp_methods[self.compression]["ext"]
-		cmd = self.comp_methods[self.compression]["cmd"]
+		ext = self.args.comp_methods[self.compression]["ext"]
+		cmd = self.args.comp_methods[self.compression]["cmd"]
 		self.log.info(f"Compressing initial ramdisk using [turquoise2]{' '.join(cmd)}[default]...")
 		out_cpio = f"{self.temp_initramfs}.{ext}"
 		with open(out_cpio, "wb") as of:
@@ -204,16 +166,83 @@ class InitialRamDisk:
 	def copy_binary(self, binary, out_path=None):
 		copy_binary(binary, dest_root=self.initramfs_root, out_path=out_path)
 
+	def display_enabled_plugins(self):
+		if self.plugins:
+			out_list = []
+			for plugin in sorted(self.plugins.keys()):
+				if plugin in self.enabled_plugins:
+					out_list.append(f"[orange1]{plugin}[default]")
+				else:
+					out_list.append(f"[turquoise2]{plugin}[default]")
+			self.log.info(f"Registered plugins: {'/'.join(out_list)}")
+
+	def init_module_scanner(self):
+		if self.args.values.kmod_config == "kpop":
+			if not self.kpop:
+				raise ValueError("The kpop option requires a list of modules specified to include.")
+			copy_lines = autoload_lines = iter([
+				"[kpop]",
+			] + self.kpop)
+		else:
+			copy_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.args.values.kmod_config, "modules.copy"))
+			autoload_lines = iter_lines(os.path.join(self.support_root, "module_configs", self.args.values.kmod_config, "modules.autoload"))
+		self.module_scanner = ModuleScanner(
+			self.args.values.kmod_config,
+			kernel_version=self.kernel_version,
+			root=self.args.values.fs_root,
+			logger=self.log,
+			copy_lines=copy_lines,
+			autoload_lines=autoload_lines
+		)
+
+	def get_lib_modules(self) -> dict:
+		out = {}
+		module_path = os.path.join(self.args.values.fs_root, "lib/modules")
+		for kv in os.listdir(module_path):
+			link_dest = None
+			full_path = os.path.join(module_path, kv)
+			if not os.path.isdir(full_path):
+				continue
+			symlink = os.path.join(module_path, kv, "source")
+			if os.path.islink(symlink):
+				link_dest = get_link_target(symlink)
+			out[kv] = link_dest
+		return out
+
+	@property
+	def valid_kernel_versions(self):
+		return set(self.get_lib_modules().keys())
+
+	def find_kernel(self):
+		if self.args.values.kernel is None:
+			link = os.path.join(self.args.values.fs_root, "usr/src/linux")
+			self.kernel_version = get_kernel_version_from_symlink(link)
+		else:
+			if self.args.values.kernel not in self.valid_kernel_versions:
+				self.log.error(f"Specified kernel version '{self.args.kernel}' not found. Type 'ramdisk list kernels' to see list of all kernels.")
+				raise ValueError("Kernel not found")
+			self.kernel_version = self.args.values.kernel
+		self.current_version = get_current_kernel_version()
+		if self.kernel_version == self.current_version:
+			self.log.info(f"Building initramfs for: [orange1]{self.kernel_version}[default] (currently-active kernel)")
+		else:
+			self.log.info(f"Building for: [orange1]{self.kernel_version}[default] ([turquoise2]{self.current_version}[default] active)")
+
+	def print_banner(self):
+		self.log.debug(f"[turquoise2]funtoo-ramdisk [orange1]{self.args.version}[default] [grey63]:wolf:[default]")
+		if self.args.from_git:
+			self.log.debug(f"Running from git repository [turquoise2]{os.path.dirname(self.args.git_path)}[default]")
+
 	def create_ramdisk(self):
-		with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=self.args.opt_args.temp_root) as self.temp_root:
+		self.find_kernel()
+		self.print_banner()
+		self.display_enabled_plugins()
+		self.init_module_scanner()
+		with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=self.args.values.temp_root) as self.temp_root:
 			self.initramfs_root = os.path.join(self.temp_root, "initramfs")
 			os.makedirs(self.initramfs_root)
-			if len(self.args.unparsed_args) == 0:
-				raise ArgParseError("Expecting a destination to be specified for the output initramfs.")
-			elif len(self.args.unparsed_args) > 1:
-				raise ArgParseError(f"Unrecognized arguments: {' '.join(self.args.unparsed_args[1:])}")
-			final_cpio = os.path.abspath(self.args.unparsed_args[-1])
-			if os.path.exists(final_cpio) and not self.args.opt_args.force:
+			final_cpio = os.path.abspath(self.args.values.destination)
+			if os.path.exists(final_cpio) and not self.args.values.force:
 				raise FileExistsError("Specified destination initramfs already exists -- use --force to overwrite.")
 			fstab_sanity_check()
 			self.log.debug(f"Using {self.initramfs_root} to build initramfs")
@@ -237,3 +266,29 @@ class InitialRamDisk:
 			self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
 			self.log.done(f"Created:     [orange1]{final_cpio}[default]")
 			return True
+
+	def list_plugins(self):
+		for plugin in self.plugins:
+			print(plugin)
+
+	def list_kernels(self):
+		link = os.path.join(self.args.values.fs_root, "usr/src/linux")
+		link_kv = get_kernel_version_from_symlink(link)
+		kv_dict = self.get_lib_modules()
+		if link_kv in kv_dict:
+			print(f"{link_kv} ({link})")
+			del kv_dict[link_kv]
+		for kv, link_target in kv_dict.items():
+			if link_target:
+				print(f"{kv} ({link_target})")
+			else:
+				print(kv)
+
+	def run(self):
+		if self.args.action == "build":
+			return self.create_ramdisk()
+		elif self.args.action == "list":
+			if self.args.values.target == "plugins":
+				self.list_plugins()
+			elif self.args.values.target == "kernels":
+				self.list_kernels()
