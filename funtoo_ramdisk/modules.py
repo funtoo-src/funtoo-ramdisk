@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 
 import glob
-import logging
 import os
 import re
 import shutil
 import subprocess
 from collections import defaultdict
+
+from funtoo_ramdisk.log import get_logger
 
 
 class ModuleScanner:
@@ -40,10 +41,7 @@ class ModuleScanner:
 		self.kernel_version = kernel_version
 		self.copy_lines = copy_lines
 		self.autoload_lines = autoload_lines
-		if logger:
-			self.log = logger
-		else:
-			self.log = logging.getLogger("ramdisk")
+		self.log = get_logger()
 		self.builtins_by_name = {}
 		self.builtins_by_path = set()
 		self.copy_config = {
@@ -299,6 +297,7 @@ the following masked modules:\n\n"""
 			if line.startswith("[") and line.endswith("]"):
 				section = line[1:-1]
 				self.autoload_sections.append(section)
+				self.log.debug(f"process_autoload_config: section {section}")
 				lineno += 1
 				continue
 			elif not len(line):
@@ -323,7 +322,7 @@ the following masked modules:\n\n"""
   
 You should fix this so that the module you are asking to autoload is also included in the '{section}' section.
 """)
-						out_dict[section] += [kmod]
+					out_dict[section] += [kmod]
 				else:
 					if kmod in self.builtins_by_name:
 						self.log.debug(f"Module {kmod} referenced in modules.autoload is built-in to the kernel.")
@@ -358,6 +357,7 @@ You should fix this so that the module you are asking to autoload is also includ
 			with open(os.path.join(initial_ramdisk.initramfs_root, "etc/modules", mod_cat), "w") as f:
 				for mod in mod_names:
 					f.write(f"{mod}\n")
+			self.log.debug(f"Wrote {len(mod_names)} modules to /etc/modules/{mod_cat}")
 		with open(os.path.join(initial_ramdisk.initramfs_root, "etc/modules.autoload"), "w") as f:
 			for sect in self.autoload_sections:
 				f.write(f"{sect}\n")
