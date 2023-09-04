@@ -1,3 +1,11 @@
+funtoo-ramdisk 1.1.2
+--------------------
+
+Released on September 4, 2023.
+
+* Fix exit code (zero on success.)
+
+
 funtoo-ramdisk 1.1.1
 --------------------
 
