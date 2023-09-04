@@ -37,12 +37,17 @@ class InitialRamDisk:
 		self.args = args
 
 		if pypath is not None:
-			self.py_mod_path = [os.path.join(pypath, "plugins")]
+			self.plugins_search_paths = [os.path.join(pypath, "plugins")]
 		else:
-			self.py_mod_path = [site.getsitepackages(), "funtoo_ramdisk/plugins"]
+			# Did you know that Python can have multiple site-packages directories? This is a list:
+			self.plugins_search_paths = map(lambda x: os.path.join(x, "funtoo_ramdisk/plugins"), site.getsitepackages())
 
 		self.plugins = {}
-		for plugin in pkgutil.iter_modules(self.py_mod_path, "funtoo_ramdisk.plugins."):
+
+		if not self.plugins_search_paths:
+			raise FileNotFoundError("Unable to find plugins directory -- aborting.")
+
+		for plugin in pkgutil.iter_modules(self.plugins_search_paths, "funtoo_ramdisk.plugins."):
 			mod = importlib.import_module(plugin.name)
 			iter_plugins = getattr(mod, "iter_plugins", None)
 			if not iter_plugins:
@@ -216,12 +221,17 @@ class InitialRamDisk:
 	def find_kernel(self):
 		if self.args.values.kernel is None:
 			link = os.path.join(self.args.values.fs_root, "usr/src/linux")
-			self.kernel_version = get_kernel_version_from_symlink(link)
+			if not os.path.islink(link):
+				self.log.error(f"Default linux symlink at {link} not found -- please specify a kernel. Type 'ramdisk list kernels' for a list.")
+			else:
+				self.kernel_version = get_kernel_version_from_symlink(link)
 		else:
 			if self.args.values.kernel not in self.valid_kernel_versions:
 				self.log.error(f"Specified kernel version '{self.args.kernel}' not found. Type 'ramdisk list kernels' to see list of all kernels.")
-				raise ValueError("Kernel not found")
-			self.kernel_version = self.args.values.kernel
+			else:
+				self.kernel_version = self.args.values.kernel
+		if not self.kernel_version:
+			raise ValueError("Kernel not found")
 		self.current_version = get_current_kernel_version()
 		if self.kernel_version == self.current_version:
 			self.log.info(f"Building initramfs for: [orange1]{self.kernel_version}[default] (currently-active kernel)")
@@ -273,9 +283,12 @@ class InitialRamDisk:
 
 	def list_kernels(self):
 		link = os.path.join(self.args.values.fs_root, "usr/src/linux")
-		link_kv = get_kernel_version_from_symlink(link)
+		if os.path.islink(link):
+			link_kv = get_kernel_version_from_symlink(link)
+		else:
+			link_kv = None
 		kv_dict = self.get_lib_modules()
-		if link_kv in kv_dict:
+		if link_kv is not None and link_kv in kv_dict:
 			print(f"{link_kv} ({link})")
 			del kv_dict[link_kv]
 		for kv, link_target in kv_dict.items():
