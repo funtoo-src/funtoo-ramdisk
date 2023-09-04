@@ -305,3 +305,4 @@ class InitialRamDisk:
 				self.list_plugins()
 			elif self.args.values.target == "kernels":
 				self.list_kernels()
+			return True

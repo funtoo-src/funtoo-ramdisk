@@ -45,7 +45,7 @@ async def main_thread(args: Arguments):
 		support_root=support_root,
 		pypath=mod_path,
 	)
-	ramdisk.run()
+	return ramdisk.run()
 
 
 if __name__ == "__main__":
