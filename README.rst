@@ -50,9 +50,13 @@ What's Included
 So, what *does* Funtoo's ramdisk tool actually offer? Here's a list:
 
 * genkernel-style initramfs without the cruft. In comparison to genkernel's
-  initramfs, the shell code is about 10x simpler and a lot cleaner, but does
-  the same thing and has been modernized. About 100 lines of shell script,
-  with another 215 lines of functions in a support file.
+  initramfs, the shell code is about 10x simpler and a lot cleaner and has
+  been modernized. About 100 lines of shell script, with another 215 lines
+  of functions in a support file.
+
+* Copies over the modules you specify -- and automatically figures out any
+  kernel module dependencies, so any depended-upon modules are also copied.
+  This eliminates the need to track these dependencies manually.
 
 * Rootless operation. You do not need enhanced privileges to create the
   initramfs.
@@ -67,10 +71,11 @@ So, what *does* Funtoo's ramdisk tool actually offer? Here's a list:
   systems with NVMe drives will load just a handful of modules to boot
   -- all without requiring any special action from the user.
 
-* If you are still able to find some modules that got loaded that you
-  don't want loaded, you can use the "magic modules" feature to specify
-  just the modules you want to load. Specify ``magic=mod1,mod2,mod3``
-  as a kernel argument and just these modules will be loaded.
+* "kpop" functionality allows for building ramdisks with just the modules
+  you need. For example, ``ramdisk --kpop=nvme,ext4`` will create a
+  ramdisk that can boot on NVMe ext4 root filesystems, and only include
+  these necessary modules, leaving all other modules to be loaded by
+  your Funtoo Linux system.
 
 * Effective Python-based command to actually build the ramdisk, which is
   called: ``ramdisk``. This gives us an extensible platform for the future.
@@ -94,7 +99,9 @@ Then, as a regular user, you can run::
 By default, ``ramdisk`` will use your ``/usr/src/linux`` symlink to determine which
 kernel to use to build a ramdisk for. It will parse ``/usr/src/linux/Makefile``,
 extract kernel version information, and then find the appropriate directory in
-``/lib/modules/<kernel_name>`` for copying modules.
+``/lib/modules/<kernel_name>`` for copying modules. You can type:
+``ramdisk list kernels`` and ``ramdisk --kernel <kernel_name>`` to build a ramdisk
+for a non-default kernel.
 
 Since this is brand-new software, it is highly recommended that you DO NOT OVERWRITE
 YOUR EXISTING, WORKING INITRAMFS THAT YOU CURRENTLY USE TO BOOT YOUR SYSTEM.

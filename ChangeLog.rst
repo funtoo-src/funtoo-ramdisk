@@ -1,3 +1,68 @@
+funtoo-ramdisk 1.1.0
+--------------------
+
+Released on September 3, 2023.
+
+* Add plugin system for ramdisk:
+
+  To use, pass ``--enable=<plugin1>,<plugin2>``. The ``core`` plugin is
+  always enabled and copies ``/sbin/blkid``. There are currently ``btrfs``
+  and ``lvm`` plugins as well -- these are not yet fully-implemented and
+  just ensure necessary binaries are copied over (no extra setup commands
+  are run by the initramfs.)
+
+  This is a starting point for enabling support for advanced
+  features on the initramfs.
+
+* New "module configurations". The default module configuration is "full",
+  which means "make a ramdisk with lots of modules to support a lot of
+  hardware." Different module configurations can be added in the future.
+  Module configurations can be specified via ``--kmod_config=``.
+
+* ``--kpop=`` feature to make minimal module ramdisks by specifying a
+  dynamic module configuration via the command-line, rather than via
+  static config files.
+
+  If you specify ``--kpop=nvme,ext4`` then a ramdisk with just those
+  modules (and their dependencies) will be included. This can dramatically
+  reduce the size of your ramdisk. Note that this doesn't include the
+  necessary modules to allow USB keyboards to work in the rescue shell,
+  so it's only for known-good configurations. Enabling this feature also
+  disables any static module configuration (see above.)
+
+* Change the binary plugin API so lists of binaries can be dynamically
+  created and programmatic decisions can be made. Previously, we used a
+  static list. This allows us to use ``lvm.static`` if available, but
+  fall back to dynamic ``lvm``, for example.
+
+* To support ``kpop`` functionality, the ability to add a module by its
+  basic name, not just via its full path or glob, was added to
+  ``modules.copy``.
+
+* Modules code can now accept ``modules.copy`` and ``modules.autoload``
+  as dynamically-generated line data rather than just as static files
+  that must exist on the filesystem. (Again, used by ``kpop``).
+
+* ``linuxrc`` has been improved/fixed to not have a hard-coded list of
+  module groups to try to load, and instead use the ``modules.autoload``
+  groups to determine these.
+
+* ``ramdisk list kernels`` and ``ramdisk list plugins`` actions added.
+  The former makes use of ``ramdisk --kernel <kv>`` easier because it
+  prints the available kernel names which can be copy/pasted for the
+  ``--kernel`` option.
+
+* Implemented our own argument parsing as ``argparse`` was not worth
+  using.
+
+* Lots of code organized into their own ``.py`` files.
+
+* Make ``/etc/fstab`` sanity check a warning as this file may not be
+  set up at all if doing a metro build.
+
+* Disable colors if we don't have an interactive shell.
+
+
 funtoo-ramdisk 1.0.7
 --------------------
 
