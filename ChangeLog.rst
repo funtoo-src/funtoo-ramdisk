@@ -1,3 +1,17 @@
+funtoo-ramdisk 1.1.1
+--------------------
+
+Released on September 4, 2023.
+
+Fix three bugs:
+
+* Allow plugins to be loaded when installed in ``site-packages``.
+
+* Don't assume ``/usr/src/linux`` symlink exists in two places and
+  handle this situation gracefully. This situation may exist during
+  metro builds on incomplete systems. (2 bugs fixed).
+
+
 funtoo-ramdisk 1.1.0
 --------------------
 
