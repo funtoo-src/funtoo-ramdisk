@@ -39,32 +39,34 @@ def fstab_sanity_check():
 		root_entry = fstab.get_line_by_mount("/")
 	except KeyError:
 		log.warning("Cannot find '/' mount point in /etc/fstab -- assuming not-yet-configured system or metro build.")
-		return
+		return True
 	if re.match("^/dev/sd.*", root_entry[0]):
 		cmd = f"/sbin/blkid -s UUID -o value {root_entry[0]}"
-		status, uuid = subprocess.getstatusoutput(cmd)
-		if status != 0:
-			raise ValueError(f"command: '{cmd}' failed with exit code {status}.")
-		uuid = uuid.strip()
-		if not uuid:
-			raise ValueError(f"command: '{cmd}' was unable to give us a UUID.")
 		log.warning(f"""Detected root device {root_entry[0]}, which could be a problem if you have more
 	than one ATA/SCSI disk. Since /dev/sd* device nodes are not consistently 
 	assigned, the initramfs could see this as a different device. Please do the the
 	following:
 
-	1. In /etc/fstab, change your root entry from:
+	1. Run the following command as root:
+	
+	   # {cmd}
+	
+	2. Copy the UUID value displayed for your root block device.
+	
+	3. In /etc/fstab, change your root entry from:
 
 	   {'    '.join(root_entry)} 
 
 	   to:
 
-	   UUID={uuid}    {'    '.join(root_entry[1:])}
+	   UUID=<PASTED_UUID>    {'    '.join(root_entry[1:])}
 
-	2. *Re-run* ego boot update so that GRUB will look for your root block device
+	4. *Re-run* ego boot update so that GRUB will look for your root block device
 	    by UUID.
 
-	3. This problem should now be resolved, since now you are referring to the root
+	5. This problem should now be resolved, since now you are referring to the root
 	   block device using a UUID which will not change. Now, go ahead and try to
 	   create your ramdisk again.
 		""")
+		return False
+	return True
