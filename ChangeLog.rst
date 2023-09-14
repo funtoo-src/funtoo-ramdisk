@@ -1,3 +1,15 @@
+funtoo-ramdisk 1.1.3
+--------------------
+
+Released on September 14, 2023.
+
+* FL-11606: ``/sbin/blkid`` can't be run as non-root, and will
+  trigger a sandbox violation inside an ebuild. So don't do it --
+  we were just running it to convieniently spit out the UUID for
+  the user to put in their ``/etc/fstab``. Now we instruct the
+  user to run ``blkid`` as root and avoid the sandbox violation.
+
+
 funtoo-ramdisk 1.1.2
 --------------------
 
