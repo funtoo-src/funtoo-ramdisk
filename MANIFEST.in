@@ -1,1 +1,3 @@
 recursive-include funtoo_ramdisk/support *
+include doc/ramdisk.8
+include COPYRIGHT.rst

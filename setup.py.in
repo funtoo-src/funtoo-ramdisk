@@ -1,6 +1,6 @@
 import setuptools
 
-with open("README.rst", "r") as fh:
+with open("doc/manpage.rst", "r") as fh:
 	long_description = fh.read()
 long_description += """
 
@@ -16,7 +16,7 @@ print(long_description)
 setuptools.setup(
 	name="funtoo-ramdisk",
 	version="##VERSION##",
-	author="Daniel Robbins",
+	author="Daniel Robbins, Funtoo Solutions Inc.",
 	author_email="drobbins@funtoo.org",
 	description="Funtoo framework for creating initial ramdisks.",
 	long_description=long_description,

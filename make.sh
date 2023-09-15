@@ -9,10 +9,11 @@ prep() {
 	cat > funtoo_ramdisk/version.py << EOF
 __version__ = "$VERSION"
 EOF
-	for x in setup.py; do
+	for x in setup.py doc/manpage.rst; do
 		sed -e "s/##VERSION##/$VERSION/g" \
 		${x}.in > ${x}
 	done
+	rst2man.py doc/manpage.rst > doc/ramdisk.8
 }
 
 commit() {
