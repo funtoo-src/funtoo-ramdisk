@@ -1,3 +1,11 @@
+funtoo-ramdisk 1.1.4
+--------------------
+
+Released on September 15, 2023.
+
+This release adds a "ramdisk" man page.
+
+
 funtoo-ramdisk 1.1.3
 --------------------
 
