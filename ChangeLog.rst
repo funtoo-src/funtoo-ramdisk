@@ -1,3 +1,11 @@
+funtoo-ramdisk 1.1.5
+--------------------
+
+Released on September 15, 2023.
+
+This is a packaging fix for the manpage.
+
+
 funtoo-ramdisk 1.1.4
 --------------------
 
