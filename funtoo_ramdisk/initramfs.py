@@ -227,7 +227,7 @@ class InitialRamDisk:
 				self.kernel_version = get_kernel_version_from_symlink(link)
 		else:
 			if self.args.values.kernel not in self.valid_kernel_versions:
-				self.log.error(f"Specified kernel version '{self.args.kernel}' not found. Type 'ramdisk list kernels' to see list of all kernels.")
+				self.log.error(f"Specified kernel version '{self.args.values.kernel}' not found. Type 'ramdisk list kernels' to see list of all kernels.")
 			else:
 				self.kernel_version = self.args.values.kernel
 		if not self.kernel_version:
