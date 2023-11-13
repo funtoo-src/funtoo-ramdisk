@@ -64,7 +64,6 @@ execute_plugins() {
     fi
     . source_file
   done
-
 }
 
 backup() {
