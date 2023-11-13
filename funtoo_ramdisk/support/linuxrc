@@ -13,10 +13,10 @@ mount -o remount,rw / >/dev/null 2>&1
 
 # Set up symlinks
 /bin/busybox --install -s
-
 mkdir -p /newroot
-
 parse_cmdline
+
+. /etc/plugins/scan/$SCAN_MODE
 
 if [ "$DEBUG" = "yes" ]; then
 	echo '6' > /proc/sys/kernel/printk
@@ -30,9 +30,7 @@ then
 fi
 
 mount_devfs
-
 mount_sysfs
-
 udev_setup
 
 # if the root filesystem type was specified, load this FS module first:
@@ -43,29 +41,19 @@ else
 	modules_scan filesystems
 fi
 
+execute_plugins
+
 # If "magic" list of modules was specified, use this and see if this gets us the
 # root block device:
 if [ "$MAGIC" = "1" ]; then
 	good_msg "Loading magic modules..."
 	do_modprobe $MAGIC
+  if determine_root && mount_real_root && sanity_check_root; then
+	  good_msg "Use of magic modules allowed us to find the root block device early..."
+  fi
 fi
 
-
-# This is here to try the "MAGIC" modules and see if they did the trick.
-# If so, we can skip the modules scan, below:
-if [ "$MAGIC" = "1" ] && determine_root && mount_real_root && sanity_check_root; then
-	good_msg "Use of magic modules allowed us to find the root block device early..."
-fi
-
-if [ "${MOUNTED_ROOT_FS}" != '1' ] && [ "${DETECT}" != '0' ]
-then
-	good_msg "Starting modules scanning..."
-	while read -r section; do
-		modules_scan "${section}"
-		# The "quick" boot option: try to short-circuit module loading if we appear successful:
-		[ -n "$QUICK" ] && determine_root && mount_real_root && sanity_check_root && break
-	done < /etc/modules.autoload
-fi
+[ "${MOUNTED_ROOT_FS}" != "1" ] && exhaustive_modules_scan
 
 [ "$DEBUG_SHELL" = "yes" ] && run_shell good 'Debug shell requested, starting prior to mounting root fs'
 
@@ -88,7 +76,5 @@ do
 done
 
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
-
 cd / && exec /sbin/switch_root -c "/dev/console" /newroot "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
-
 run_shell bad "Something prevented us from switching into root filesystem."

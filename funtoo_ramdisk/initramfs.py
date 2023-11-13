@@ -105,9 +105,14 @@ class InitialRamDisk:
 		os.symlink("init", os.path.join(self.initramfs_root, "linuxrc"))
 		os.symlink("../init", os.path.join(self.initramfs_root, "sbin/init"))
 		for file in os.listdir(os.path.join(self.support_root, "etc")):
-			shutil.copy(os.path.join(self.support_root, "etc", file), os.path.join(self.initramfs_root, "etc"))
+			src = os.path.join(self.support_root, "etc", file)
+			if os.path.isfile(src):
+				shutil.copy(src, os.path.join(self.initramfs_root, "etc"))
 		for x in ["init", "etc/initrd.scripts", "etc/initrd.defaults"]:
-			os.chmod(os.path.join(self.initramfs_root, x), 0O755)
+			os.chmod(os.path.join(self.initramfs_root, x), 0o755)
+		os.makedirs(os.path.join(self.initramfs_root, "etc/plugins/scan_mode"), exist_ok=True)
+		for file in os.listdir(os.path.join(self.support_root, "etc/plugins/scan_mode")):
+			shutil.copy(os.path.join(self.support_root, "etc/plugins/scan_mode", file), os.path.join(self.initramfs_root, "etc/plugins/scan_mode"))
 
 	def setup_busybox(self):
 		self.copy_binary("/bin/busybox")
@@ -170,6 +175,14 @@ class InitialRamDisk:
 
 	def copy_binary(self, binary, out_path=None):
 		copy_binary(binary, dest_root=self.initramfs_root, out_path=out_path)
+
+	def install_activation_script(self, name, contents):
+		plugins_dir = os.path.join(self.initramfs_root, "etc/plugins")
+		os.makedirs(plugins_dir, exist_ok=True)
+		script_fn = os.path.join(plugins_dir, f"{name}.sh")
+		with open(script_fn, "w") as script_file:
+			script_file.write(contents)
+		os.chmod(script_fn, 0o775)
 
 	def display_enabled_plugins(self):
 		if self.plugins:

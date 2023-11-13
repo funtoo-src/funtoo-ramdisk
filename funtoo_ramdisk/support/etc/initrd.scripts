@@ -1,7 +1,5 @@
 #!/bin/ash
 
-. /etc/initrd.defaults
-
 parse_cmdline() {
 	for x in $(cat /proc/cmdline)
 	do
@@ -31,10 +29,20 @@ parse_cmdline() {
 			slow)
 				QUICK=''
 			;;
+	    ramdisk.activate=*)
+	      PLUGINS="${x#*=}"
+	      PLUGINS="${PLUGINS/,/ }"
+	    ;;
+	    ramdisk.scan_mode=*)
+	      scan_mode="${x#*=}"
+	      if [ "$scan_mode" != "" ]; then
+	        SCAN_MODE=$scan_mode
+	      fi
+	      ;;
 			magic=*)
 				# specify magic list of modules to try, comma separated:
 				MAGIC="${x#*=}"
-				MAGIC="${x/,/ }"
+				MAGIC="${MAGIC/,/ }"
 			;;
 			real_rootflags=*)
 				REAL_ROOTFLAGS=${x#*=}
@@ -46,19 +54,25 @@ parse_cmdline() {
 	done
 }
 
+execute_plugins() {
+  local source_file
+  for plugin in $PLUGINS; do
+    source_file="/etc/plugins/${plugin}.sh"
+    if [ ! -e "${source_file}" ]; then
+      bad_msg "Specified ramdisk.activate plugin $plugin does not exist at $source_file -- cannot execute!"
+      sleep 10
+    fi
+    . source_file
+  done
+
+}
+
 backup() {
 	echo -ne "\033[0G\033[0K"
 }
 
 debug_msg() {
 	[ "$DEBUG" = "yes" ] && echo "<7>funtoo-ramdisk: $*" > /dev/kmsg
-}
-
-udev_setup() {
-	good_msg 'Activating mdev'
-	touch /dev/mdev.seq
-	[ -f /proc/sys/kernel/hotplug ] && echo /sbin/mdev > /proc/sys/kernel/hotplug
-	mdev -s || bad_msg "mdev device scan failed"
 }
 
 do_modprobe() {
@@ -212,4 +226,3 @@ warn_msg() {
 	msg_string="${msg_string:-...}"
 	[ "$2" != 1 ] && echo -e "${WARN}**${NORMAL}${BOLD} ${msg_string} ${NORMAL}"
 }
-

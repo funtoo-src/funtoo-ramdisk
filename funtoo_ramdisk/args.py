@@ -77,7 +77,7 @@ class Arguments:
 		Results are stored in ``self.opt_args`` with the found optional values set to ``True``. Any not-specified
 		argument will have a ``False`` default value.
 
-		This function returns sets ``self.unparsed_args`` to the remaining unparsed arguments.
+		This function sets ``self.unparsed_args`` to the remaining unparsed arguments.
 		"""
 		pos = 0
 		still_unparsed = []
@@ -155,6 +155,11 @@ class Arguments:
 				raise ArgParseError(f"No action specified. Specify one of: {' '.join(sorted(self.defined_actions))}")
 		self.unparsed_args = still_unparsed
 
+	def check_for_unrecognized_options(self):
+		for arg in self.unparsed_args:
+			if arg.startswith("--"):
+				raise ArgParseError(f"Unrecognized option: {arg}")
+
 	def parse_positionals(self):
 		if self.action in self.final_positionals:
 			fin_pos = self.final_positionals[self.action]
@@ -204,6 +209,7 @@ class Arguments:
 			self.parse_options(self.action_options[self.action])
 		if self.action in self.action_settings:
 			self.parse_settings(self.action_settings[self.action])
+		self.check_for_unrecognized_options()
 		self.parse_positionals()
 		if self.action == "help":
 			self.do_help()
