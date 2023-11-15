@@ -61,8 +61,11 @@ execute_plugins() {
     if [ ! -e "${source_file}" ]; then
       bad_msg "Specified ramdisk.activate plugin $plugin does not exist at $source_file -- cannot execute!"
       sleep 10
+    else
+      good_msg "Executing plugin at ${source_file}"
+    . ${source_file}
+    [ $? -ne 0 ] && sleep 10
     fi
-    . source_file
   done
 }
 
