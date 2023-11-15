@@ -31,7 +31,10 @@ class RamDiskPlugin:
 					binary = binary[0]
 				else:
 					final_name = binary
-				self.ramdisk.log.info(f"Copying [turquoise2]{binary}[default] to initramfs...")
+				if binary == final_name:
+					self.ramdisk.log.info(f"Copying [turquoise2]{binary}[default] to initramfs...")
+				else:
+					self.ramdisk.log.info(f"Copying [turquoise2]{binary}[default] to initramfs as [turquoise2]{final_name}[default]...")
 				self.ramdisk.copy_binary(binary, out_path=final_name)
 			except BinaryNotFoundError as bne:
 				self.ramdisk.log.error(f"Required binary [turquoise2]{bne.binary}[default] for plugin [orange1]{self.key}[default] does not exist. Please emerge {bne.dep} to fix this.")
