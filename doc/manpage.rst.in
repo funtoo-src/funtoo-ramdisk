@@ -117,7 +117,7 @@ OPTIONS
                         which kernel to build a ramdisk for.
 --compression=<method>  Compression method to use. Default is ``xz``. Also supported: ``zstd``.
 --temp_root=<path>      Where to create temporary files. Defaults to ``/var/tmp``.
---enable=<plugins>      A comma-delimited list of plugins to enable. The ``core`` plugin is
+--plugins=<plugins>     A comma-delimited list of plugins to enable. The ``core`` plugin is
                         always enabled. Type ``ramdisk list plugins`` to see a list of available
                         plugins.
 --kmod_config=<cfg>     ``ramdisk`` supports different sets of kernel module configurations, which

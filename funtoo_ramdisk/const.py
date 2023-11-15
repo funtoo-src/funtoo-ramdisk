@@ -32,7 +32,7 @@ class RamDiskArguments(Arguments):
 			"--kernel": None,
 			"--compression": "xz",
 			"--temp_root": "/var/tmp",
-			"--enable": "",
+			"--plugins": "",
 			"--kmod_config": "full",
 			"--kpop": None,
 		}

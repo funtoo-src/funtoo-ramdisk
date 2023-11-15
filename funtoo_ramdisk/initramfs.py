@@ -70,8 +70,8 @@ class InitialRamDisk:
 		self.size_compressed = None
 		# When creating initramfs, enable correct plugins:
 		self.enabled_plugins = {"core"}
-		if self.args.values.enable:
-			enabled_plugins = self.args.values.enable.split(",")
+		if self.args.values.plugins:
+			enabled_plugins = self.args.values.plugins.split(",")
 			self.enabled_plugins |= set(enabled_plugins)
 		self.kernel_version = None
 		self.current_version = None
