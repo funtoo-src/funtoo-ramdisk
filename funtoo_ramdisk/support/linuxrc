@@ -16,7 +16,7 @@ mount -o remount,rw / >/dev/null 2>&1
 mkdir -p /newroot
 parse_cmdline
 
-. /etc/plugins/scan/$SCAN_MODE
+. /etc/plugins/scan_mode/${SCAN_MODE}.sh
 
 if [ "$DEBUG" = "yes" ]; then
 	echo '6' > /proc/sys/kernel/printk
