@@ -1,3 +1,13 @@
+funtoo-ramdisk 1.1.7
+--------------------
+
+Released on April 15, 2024.
+
+This is a minor bug release.
+
+* Fix a possible issue where ``__pycache__`` directories can mess
+  up copying of files to the initramfs.
+
 funtoo-ramdisk 1.1.6
 --------------------
 

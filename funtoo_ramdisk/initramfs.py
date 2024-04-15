@@ -112,7 +112,11 @@ class InitialRamDisk:
 			os.chmod(os.path.join(self.initramfs_root, x), 0o755)
 		os.makedirs(os.path.join(self.initramfs_root, "etc/plugins/scan_mode"), exist_ok=True)
 		for file in os.listdir(os.path.join(self.support_root, "etc/plugins/scan_mode")):
-			shutil.copy(os.path.join(self.support_root, "etc/plugins/scan_mode", file), os.path.join(self.initramfs_root, "etc/plugins/scan_mode"))
+			src_path = os.path.join(self.support_root, "etc/plugins/scan_mode", file)
+			if os.path.isdir(file):
+				# Likely a __pycache__ directory:
+				continue
+			shutil.copy(src_path, os.path.join(self.initramfs_root, "etc/plugins/scan_mode", file))
 
 	def setup_busybox(self):
 		self.copy_binary("/bin/busybox")
