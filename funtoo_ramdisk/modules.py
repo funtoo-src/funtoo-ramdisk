@@ -280,6 +280,8 @@ the following masked modules:\n\n"""
 		mod_order = os.path.join(src_modroot, "modules.order")
 		if os.path.exists(mod_order):
 			with open(mod_order, "r") as mod_f:
+				if not os.path.exists(out_path):
+					os.makedirs(out_path, exist_ok=True)
 				with open(os.path.join(out_path, "modules.order"), "w") as mod_f_out:
 					for line in mod_f.readlines():
 						if line.strip() in all_subpaths:
