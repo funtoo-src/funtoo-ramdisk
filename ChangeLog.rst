@@ -1,3 +1,29 @@
+funtoo-ramdisk 1.1.6
+--------------------
+
+Released on April 14, 2024.
+
+This is a maintenance and minor features release.
+
+* Various minor bug fixes.
+
+* Change ``--enable`` to ``--plugins`` since it's more
+  self-explanatory.
+
+* Continue to flesh out the plugin system. I added support for
+  plugins to have an activation script which will get executed
+  on startup. This is a work in progress and I still need to
+  add support for listing needed modules for a plugin which
+  will get loaded automatically.
+
+* Fix a bug in argument parsing where the code was not scanning
+  for invalid options which could result in odd parsing behavior.
+
+* Start adding support for udev. This is not yet completed but
+  the plugin system for this has been incorporated into the
+  linuxrc.
+
+
 funtoo-ramdisk 1.1.5
 --------------------
 
