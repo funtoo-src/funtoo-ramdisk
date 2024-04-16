@@ -1,3 +1,18 @@
+funtoo-ramdisk 1.1.9
+--------------------
+
+Released on April 16, 2024.
+
+This is a minor feature release.
+
+* Add a ``--keep`` option which will preserve the contents of the
+  temporary directory so that errors and tracebacks can be investigated. 
+  This can be enabled via ebuilds to allow exploration of any ramdisk-
+  related errors.
+
+* Improve handling of a permissions error when copying the ramdisk to
+  a final location (provide error message instead of full traceback.)
+
 funtoo-ramdisk 1.1.8
 --------------------
 
