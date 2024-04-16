@@ -288,15 +288,23 @@ class InitialRamDisk:
 			self.create_ramdisk_binary()
 			out_cpio = self.compress_ramdisk()
 			os.makedirs(os.path.dirname(final_cpio), exist_ok=True)
-			shutil.copy(out_cpio, final_cpio)
+			try:
+				shutil.copy(out_cpio, final_cpio)
+			except PermissionError as pe:
+				self.log.error(f"Unable to write to {final_cpio}.")
+				return False
 			self.log.info(f"Orig. Size:  [turquoise2]{self.size_initial / 1000000:6.2f} MiB[default]")
 			self.log.info(f"Final Size:  [turquoise2]{self.size_final / 1000000:6.2f} MiB[default]")
 			self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
 			self.log.done(f"Created:     [orange1]{final_cpio}[default]")
 			return True
 		finally:
-			if not self.args.keep:
+			if not self.args.values.keep:
 				self.temp_root.cleanup()
+			else:
+				if getattr(self.temp_root, "_finalizer"):
+					self.temp_root._finalizer.detach()
+				self.log.info(f"Keeping ramdisk temporary directory [orange1]{self.temp_root.name}[default] due to [turquoise2]--keep[default] option")
 
 	def list_plugins(self):
 		for plugin in self.plugins:

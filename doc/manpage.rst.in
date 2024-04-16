@@ -104,6 +104,7 @@ OPTIONS
 --backtrace             Display full python backtrace/traceback instead of just a
                         short error summary.
 --force                 Overwrite target initramfs if it exists.
+--keep                  Keep the temporary directory after execution for investigation/debugging.
 --version               Show this program's version number and exit.
 --help                  Show this help message and exit.
 --fs_foot=<path>        This defaults to ``/``, and specifies the filesystem root to look at

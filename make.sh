@@ -13,7 +13,7 @@ EOF
 		sed -e "s/##VERSION##/$VERSION/g" \
 		${x}.in > ${x}
 	done
-	rst2man doc/manpage.rst > doc/ramdisk.8
+	rst2man.py doc/manpage.rst > doc/ramdisk.8
 }
 
 commit() {
