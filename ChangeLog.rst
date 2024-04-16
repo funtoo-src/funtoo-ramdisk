@@ -1,3 +1,12 @@
+funtoo-ramdisk 1.1.8
+--------------------
+
+Released on April 16, 2024.
+
+This is a minor bug release.
+
+* Fix for the previous fix.
+
 funtoo-ramdisk 1.1.7
 --------------------
 
