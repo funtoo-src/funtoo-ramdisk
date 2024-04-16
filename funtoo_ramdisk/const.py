@@ -20,7 +20,8 @@ class RamDiskArguments(Arguments):
 		"--backtrace": False,
 		"--force": False,
 		"--help": False,
-		"--version": False
+		"--version": False,
+		"--keep": False
 	}
 
 	global_settings = {

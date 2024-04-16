@@ -139,7 +139,7 @@ class InitialRamDisk:
 
 	@property
 	def temp_initramfs(self):
-		return os.path.join(self.temp_root, "initramfs.cpio")
+		return os.path.join(self.temp_root.name, "initramfs.cpio")
 
 	def create_ramdisk_binary(self):
 		# We use a "starter" initramfs.cpio with some pre-existing device nodes, because the current user may
@@ -265,8 +265,9 @@ class InitialRamDisk:
 		self.print_banner()
 		self.display_enabled_plugins()
 		self.init_module_scanner()
-		with tempfile.TemporaryDirectory(prefix="ramdisk-", dir=self.args.values.temp_root) as self.temp_root:
-			self.initramfs_root = os.path.join(self.temp_root, "initramfs")
+		self.temp_root = tempfile.TemporaryDirectory(prefix="ramdisk-", dir=self.args.values.temp_root)
+		try:
+			self.initramfs_root = os.path.join(self.temp_root.name, "initramfs")
 			os.makedirs(self.initramfs_root)
 			final_cpio = os.path.abspath(self.args.values.destination)
 			if os.path.exists(final_cpio) and not self.args.values.force:
@@ -293,6 +294,9 @@ class InitialRamDisk:
 			self.log.info(f"Ratio:       [orange1]{(self.size_final / self.size_initial) * 100:.2f}% [turquoise2]({self.size_initial/self.size_final:.2f}x)[default]")
 			self.log.done(f"Created:     [orange1]{final_cpio}[default]")
 			return True
+		finally:
+			if not self.args.keep:
+				self.temp_root.cleanup()
 
 	def list_plugins(self):
 		for plugin in self.plugins:
