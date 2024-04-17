@@ -1,3 +1,13 @@
+funtoo-ramdisk 1.1.10
+---------------------
+
+Released on April 16, 2024.
+
+This is a minor bug fix release.
+
+* Attempting to fix an issue where the temporary kernel modules directory
+  is not properly created, resulting in an error.
+
 funtoo-ramdisk 1.1.9
 --------------------
 
