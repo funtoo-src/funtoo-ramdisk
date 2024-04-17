@@ -228,6 +228,10 @@ class ModuleScanner:
 
 	def copy_modules_to_initramfs(self, initramfs_root, strip_debug=True):
 		out_path = os.path.join(initramfs_root, "lib/modules", self.kernel_version)
+		if not os.path.exists(out_path):
+			os.makedirs(out_path, exist_ok=True)
+		if not os.path.isdir(out_path):
+			raise FileExistsError(f"{out_path} is not a directory -- cannot continue.")
 		src_modroot = os.path.join(self.root, "lib/modules", self.kernel_version)
 		src_modroot_len = len(src_modroot)
 		mod_count = 0
@@ -280,8 +284,6 @@ the following masked modules:\n\n"""
 		mod_order = os.path.join(src_modroot, "modules.order")
 		if os.path.exists(mod_order):
 			with open(mod_order, "r") as mod_f:
-				if not os.path.exists(out_path):
-					os.makedirs(out_path, exist_ok=True)
 				with open(os.path.join(out_path, "modules.order"), "w") as mod_f_out:
 					for line in mod_f.readlines():
 						if line.strip() in all_subpaths:
