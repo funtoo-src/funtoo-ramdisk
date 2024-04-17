@@ -1,3 +1,16 @@
+funtoo-ramdisk 1.1.11
+---------------------
+
+Released on April 17, 2024.
+
+This is a feature release.
+
+* Linux 6.6+ now builds and installs kernel modules with the ``.ko.xz``
+  suffix. This requires several code updates to support this new naming
+  scheme. This is the initial implementation and there may be additional
+  needed fixes for things like the initramfs after this is tested using
+  this updated initramfs-build code.
+
 funtoo-ramdisk 1.1.10
 ---------------------
 

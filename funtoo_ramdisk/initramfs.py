@@ -213,8 +213,8 @@ class InitialRamDisk:
 			kernel_version=self.kernel_version,
 			root=self.args.values.fs_root,
 			logger=self.log,
-			copy_lines=copy_lines,
-			autoload_lines=autoload_lines
+			copy_lines=list(copy_lines),
+			autoload_lines=list(autoload_lines)
 		)
 
 	def get_lib_modules(self) -> dict:
@@ -335,3 +335,5 @@ class InitialRamDisk:
 			elif self.args.values.target == "kernels":
 				self.list_kernels()
 			return True
+
+# vim: ts=4 sw=4 noet
