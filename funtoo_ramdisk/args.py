@@ -1,4 +1,5 @@
 import sys
+from os import system
 
 from funtoo_ramdisk.log import get_logger
 log = get_logger()
@@ -187,7 +188,7 @@ class Arguments:
 					self.unparsed_args.pop(0)
 
 	def do_help(self):
-		print("HELP!")
+		system("/usr/bin/man ramdisk")
 		sys.exit(1)
 
 	def do_version(self):

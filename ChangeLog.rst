@@ -1,3 +1,13 @@
+funtoo-ramdisk 1.1.12
+---------------------
+
+Released on April 19, 2024.
+
+This is a bug fix release.
+
+* Fix man page generation (docutils recently renamed ``rst2man.py`` to
+  ``rst2man``)
+
 funtoo-ramdisk 1.1.11
 ---------------------
 

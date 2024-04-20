@@ -13,7 +13,16 @@ EOF
 		sed -e "s/##VERSION##/$VERSION/g" \
 		${x}.in > ${x}
 	done
-	rst2man.py doc/manpage.rst > doc/ramdisk.8
+	if [ -n "$( which rst2man.py 2>/dev/null )" ]; then
+		rst2man.py doc/manpage.rst > doc/ramdisk.8
+		[ $? -ne 0 ] && echo "man page fail" && exit 1
+	elif [ -n "$( which rst2man 2>/dev/null )" ]; then
+		rst2man doc/manpage.rst > doc/ramdisk.8
+		[ $? -ne 0 ] && echo "man page fail" && exit 1
+	else
+		echo "rst2man(.py) not found. Please install docutils."
+		exit 1
+	fi
 }
 
 commit() {
