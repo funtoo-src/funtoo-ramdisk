@@ -41,7 +41,7 @@ else
 	modules_scan filesystems
 fi
 
-execute_plugins
+execute_plugins pre_scan
 
 # If "magic" list of modules was specified, use this and see if this gets us the
 # root block device:
@@ -53,7 +53,11 @@ if [ "$MAGIC" = "1" ]; then
   fi
 fi
 
+execute_plugins pre_exhaustive_scan
+
 [ "${MOUNTED_ROOT_FS}" != "1" ] && exhaustive_modules_scan
+
+execute_plugins post_scan
 
 [ "$DEBUG_SHELL" = "yes" ] && run_shell good 'Debug shell requested, starting prior to mounting root fs'
 
@@ -75,6 +79,11 @@ do
 	fi
 done
 
+execute_plugins pre_switch_root
+
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
 cd / && exec /sbin/switch_root -c "/dev/console" /newroot "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
+
+execute_plugins post_switch_root
+
 run_shell bad "Something prevented us from switching into root filesystem."

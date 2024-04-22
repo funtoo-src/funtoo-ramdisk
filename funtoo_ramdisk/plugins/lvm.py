@@ -5,6 +5,8 @@ from funtoo_ramdisk.plugin_base import RamDiskPlugin, BinaryNotFoundError
 
 class LVMRamDiskPlugin(RamDiskPlugin):
 	key = "lvm"
+	hooks = ["post_scan"]
+
 
 	# TODO: add ability to add a list of required modules for any plugin, as well as load info
 
@@ -18,7 +20,7 @@ class LVMRamDiskPlugin(RamDiskPlugin):
 			raise BinaryNotFoundError(f"Binary /sbin/lvm or /sbin/lvm.static not found", dep="sys-fs/lvm2")
 
 	@property
-	def activation_script(self):
+	def post_scan_script(self):
 		return """
 good_msg "Scanning for volume groups..."
 /bin/lvm vgchange -ay --sysinit 2>&1

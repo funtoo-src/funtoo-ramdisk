@@ -11,6 +11,7 @@ class BinaryNotFoundError(Exception):
 class RamDiskPlugin:
 
 	key = "generic"
+	hooks = []
 
 	@property
 	def binaries(self):
@@ -18,10 +19,6 @@ class RamDiskPlugin:
 
 	def __init__(self, ramdisk):
 		self.ramdisk = ramdisk
-
-	@property
-	def activation_script(self):
-		return None
 
 	def run(self):
 		for binary in self.binaries:
@@ -39,7 +36,6 @@ class RamDiskPlugin:
 			except BinaryNotFoundError as bne:
 				self.ramdisk.log.error(f"Required binary [turquoise2]{bne.binary}[default] for plugin [orange1]{self.key}[default] does not exist. Please emerge {bne.dep} to fix this.")
 				return False
-		script = self.activation_script
-		if script is not None:
-			self.ramdisk.install_activation_script(self.key, script)
+		for hook in self.hooks:
+			self.ramdisk.install_activation_script(self.key, hook, getattr(self, f"{hook}_script"))
 		return True

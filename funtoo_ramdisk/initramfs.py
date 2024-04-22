@@ -180,8 +180,8 @@ class InitialRamDisk:
 	def copy_binary(self, binary, out_path=None):
 		copy_binary(binary, dest_root=self.initramfs_root, out_path=out_path)
 
-	def install_activation_script(self, name, contents):
-		plugins_dir = os.path.join(self.initramfs_root, "etc/plugins")
+	def install_activation_script(self, name, hook, contents):
+		plugins_dir = os.path.join(self.initramfs_root, f"etc/plugins/{hook}")
 		os.makedirs(plugins_dir, exist_ok=True)
 		script_fn = os.path.join(plugins_dir, f"{name}.sh")
 		with open(script_fn, "w") as script_file:
