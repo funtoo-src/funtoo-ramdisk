@@ -83,7 +83,4 @@ execute_plugins pre_switch_root
 
 sanity_check_root postmount || run_shell bad "post-mount sanity check failed."
 cd / && exec /sbin/switch_root -c "/dev/console" /newroot "${REAL_INIT:-/sbin/init}" "${INIT_OPTS}"
-
-execute_plugins post_switch_root
-
 run_shell bad "Something prevented us from switching into root filesystem."
