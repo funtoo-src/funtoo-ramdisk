@@ -1,3 +1,14 @@
+funtoo-ramdisk 1.1.13
+---------------------
+
+Released on April 23, 2024.
+
+This is a bug fix release.
+
+* Integrate siris' PR which gets the lvm plugin working under Funtoo.
+  This should allow for official support of LVM root filesystems.
+
+
 funtoo-ramdisk 1.1.12
 ---------------------
 
