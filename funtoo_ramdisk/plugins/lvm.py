@@ -22,16 +22,21 @@ class LVMRamDiskPlugin(RamDiskPlugin):
 	@property
 	def post_scan_script(self):
 		return """
+. /etc/initrd.scripts
 good_msg "Scanning for volume groups..."
-/bin/lvm vgchange -ay --sysinit 2>&1
+/sbin/lvm vgchange -ay --sysinit 2>&1
 if [ $? -ne 0 ]
 then
 	bad_msg "Scanning for volume groups failed!"
 else
-	udev_settle
+	good_msg "Changed and loaded volume groups..."
+	good_msg "Determining root volume device..."
+	return 0
 fi
 """
 
 
 def iter_plugins():
 	yield LVMRamDiskPlugin
+
+# vim: ts=4 sw=4 noet
