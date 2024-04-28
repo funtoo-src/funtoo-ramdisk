@@ -80,9 +80,13 @@ do_modprobe() {
 		if /sbin/modprobe -q -s "${x}" > /dev/null 2>&1; then
 			backup
 		else
-			bad_msg "ERROR loading module ${x}"
+			[ "$DEBUG" = "yes" ] && bad_msg "ERROR loading module ${x}"
 		fi
 	done
+}
+
+do_verbose_modprobe() {
+  DEBUG=yes do_modprobe "${*}"
 }
 
 modules_scan() {

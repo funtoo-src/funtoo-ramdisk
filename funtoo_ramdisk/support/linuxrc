@@ -47,7 +47,7 @@ execute_plugins pre_scan
 # root block device:
 if [ "$MAGIC" = "1" ]; then
 	good_msg "Loading magic modules..."
-	do_modprobe $MAGIC
+	do_verbose_modprobe $MAGIC
   if determine_root && mount_real_root && sanity_check_root; then
 	  good_msg "Use of magic modules allowed us to find the root block device early..."
   fi
