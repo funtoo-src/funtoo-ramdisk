@@ -11,6 +11,10 @@
 [nvme]
 kernel/drivers/nvme/**
 
+[vmscsi]
+sd_mod
+virtio_scsi
+
 [raid]
 kernel/drivers/md/**
 
