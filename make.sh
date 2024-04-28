@@ -2,6 +2,7 @@
 
 VERSION=`cat VERSION`
 PKGNAME="funtoo-ramdisk"
+LASTYEAR=`date +%Y`
 
 prep() {
 	install -d dist
@@ -10,7 +11,7 @@ prep() {
 __version__ = "$VERSION"
 EOF
 	for x in setup.py doc/manpage.rst; do
-		sed -e "s/##VERSION##/$VERSION/g" \
+		sed -e "s/##VERSION##/$VERSION/g" -e "s/##LASTYEAR##/$LASTYEAR/g" \
 		${x}.in > ${x}
 	done
 	if [ -n "$( which rst2man.py 2>/dev/null )" ]; then

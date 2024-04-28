@@ -7,7 +7,7 @@ create a bootable initial ramdisk
 --------------------------------------------------
 
 :Author: Daniel Robbins <drobbins@funtoo.org>
-:Copyright: Copyright 2023 Daniel Robbins, Funtoo Solutions, Inc.
+:Copyright: Copyright 2023-##LASTYEAR## Daniel Robbins, Funtoo Solutions, Inc.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
  You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0.
@@ -103,7 +103,8 @@ OPTIONS
 --debug                 Enable debug output.
 --backtrace             Display full python backtrace/traceback instead of just a
                         short error summary.
---force                 Overwrite target initramfs if it exists.
+--force                 Overwrite target initramfs if it exists. The command will refuse to do
+                        so by default.
 --keep                  Keep the temporary directory after execution for investigation/debugging.
 --version               Show this program's version number and exit.
 --help                  Show this help message and exit.
@@ -153,4 +154,54 @@ YOUR EXISTING, WORKING INITRAMFS THAT YOU CURRENTLY USE TO BOOT YOUR SYSTEM.**
 Instead -- create a **NEW BOOT ENTRY** to test your initramfs. In GRUB, you can also
 press 'e' to edit an entry and type in the name of the new initramfs to give it a try.
 
+INITRAMFS BOOT OPTIONS
+======================
 
+The following options are recognized by the initramfs and should be separated by whitespace on the
+kernel boot line. In Funtoo Linux, you would add them to ``/etc/boot.conf`` -- see boot.conf(5).
+
+``real_root=``
+                        This is used to specify the root device that we want to mount and boot.
+``root=``
+                        This is not used right now but will be used for live media booting.
+``real_init=``
+                        Defaults to ``/sbin/init`` -- what to run as PID 1 when booting your system.
+``init_opts=``
+                        Defaults to empty -- what command-line options to pass to PID 1.
+``shell``
+                        Start a debug shell immediately before booting your system. This will allow
+                        you to inspect the state of the initramfs. Exiting the shell will resume the
+                        normal boot process.
+``debug``
+                        Enable debug mode. More verbose output and ``dmesg`` after boot will display
+                        additional debug information for later review.
+``quick``
+                        On by default, this tells the initramfs to opportunistically see if the root
+                        block device is available during modules scanning to avoid loading all modules.
+``slow``
+                        This disables the "quick" option and exhaustively loads all modules before
+                        looking for a root block device.
+``ramdisk.activate=``
+                        A comma-delimited list of plugins to enable at boot-time. For example, set this
+                        to "lvm" to enable LVM boot.
+``ramdisk.scan_mode=``
+                        Currently defaulting to "legacy" which is the only option, and means "do the
+                        classic ``genkernel`` thing and manually load modules from our modules list.``.
+                        I hope to add dynamic loading of modules via (e)udev soon, which will become a
+                        new option.
+``magic=``
+                        This is a comma-delimited "magic" list of modules that you have determined are
+                        needed to boot your system. When this option is specified, the initramfs will
+                        load *only* these modules and then try to find the root device. This can be
+                        used to test out which modules you need to specify for the ``--kpop`` option
+                        by testing with a regular fully-populated initramfs. Once you figure out the
+                        modules you need, you can then reduce the size of the initramfs by using the
+                        ``--kpop`` options which will only oopy the those specified modules (and
+                        their dependencies) to the initramfs.
+``real_rootflags=``
+                        Specify mount flags to pass to the ``mount`` command for your root filesystem
+                        mount. A ``ro`` will always be at the beginning of this setting. Defaults to
+                        blank.
+``rootfstype=``
+                        Specify the filesystem type for your root filesystem. This is currently a
+                        required option and is set by ``ego boot``.
