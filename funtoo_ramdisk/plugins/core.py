@@ -8,10 +8,11 @@ class CoreRamDiskPlugin(RamDiskPlugin):
 
 	@property
 	def binaries(self):
-		if os.path.exists("/sbin/blkid"):
-			yield "/sbin/blkid"
-		else:
-			raise BinaryNotFoundError("/sbin/blkid", dep="sys-apps/util-linux")
+		for bin in ["/sbin/blkid", "/bin/lsblk"]:
+			if os.path.exists(bin):
+				yield bin
+			else:
+				raise BinaryNotFoundError(bin, dep="sys-apps/util-linux")
 
 
 def iter_plugins():
