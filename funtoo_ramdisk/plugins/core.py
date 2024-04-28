@@ -10,7 +10,8 @@ class CoreRamDiskPlugin(RamDiskPlugin):
 	def binaries(self):
 		for bin in ["/sbin/blkid", "/bin/lsblk"]:
 			if os.path.exists(bin):
-				yield bin
+				# put our binaries in /sbin to not conflict with busybox
+				yield bin, os.path.join("/sbin",(os.path.basename(bin)))
 			else:
 				raise BinaryNotFoundError(bin, dep="sys-apps/util-linux")
 
