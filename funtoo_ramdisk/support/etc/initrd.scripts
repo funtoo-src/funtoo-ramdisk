@@ -110,7 +110,7 @@ run_shell() {
 	[ "$1" = "bad" ] && shift && bad_msg "$@"
 	modules_scan usb usb-input
 	good_msg "These are the block devices I currently see:"
-	/bin/blkid -f
+	blkid
 	good_msg "Starting rescue shell in 5 seconds..."
 	sleep 5
 	/bin/ash

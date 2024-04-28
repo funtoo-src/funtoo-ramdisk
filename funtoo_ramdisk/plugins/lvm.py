@@ -7,7 +7,6 @@ class LVMRamDiskPlugin(RamDiskPlugin):
 	key = "lvm"
 	hooks = ["post_scan"]
 
-
 	# TODO: add ability to add a list of required modules for any plugin, as well as load info
 
 	@property
