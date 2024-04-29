@@ -109,7 +109,11 @@ run_shell() {
 	[ "$1" = "good" ] && shift && good_msg "$@"
 	[ "$1" = "bad" ] && shift && bad_msg "$@"
 	modules_scan usb usb-input
-	good_msg "These are the block devices I currently see:"
+	echo good_msg "These are the block devices I currently see by running:"
+	good_msg "/sbin/lsblk -o NAME,FSTYPE,LABEL,UUID,MOUNTPOINTS."
+	good_msg "You can try loading modules and see if your root block device appears."
+	good_msg "Exiting the shell will attempt to resume boot."
+	echo
 	/sbin/lsblk -o NAME,FSTYPE,LABEL,UUID,MOUNTPOINTS
 	good_msg "Starting rescue shell in 5 seconds..."
 	sleep 5

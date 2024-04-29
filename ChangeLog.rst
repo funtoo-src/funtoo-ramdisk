@@ -1,3 +1,27 @@
+funtoo-ramdisk 1.1.15
+---------------------
+
+Released on April 28, 2024.
+
+This is a feature and bug fix release. ``1.1.14`` contains the same
+code but is missing this ChangeLog update and more detail to the
+``lsblk`` output for rescue shell.
+
+* Add man page options on the kernel boot options for the initramfs.
+
+* Add ``lsblk`` to the initramfs and use it to generate nice output
+  when falling to the rescue shell to aid troubleshooting.
+
+* Only print errors if we have problems loading kpop modules.
+  Otherwise ignore errors. Most modules don't throw errors and fail
+  to load when the underlying hardware is not found, but there are
+  exceptions to this that was previously cluttering output.
+
+* FL-12290: Include "vmscsi" modules definition to enable SCSI boot
+  support for VirtualBox and likely other VMs, and make this fairly
+  high priority in the scan order.
+
+
 funtoo-ramdisk 1.1.13
 ---------------------
 
