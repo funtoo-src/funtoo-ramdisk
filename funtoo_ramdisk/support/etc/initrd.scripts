@@ -60,7 +60,9 @@ execute_plugins() {
     source_file="/etc/plugins/${1}/${plugin}.sh"
     good_msg "Executing plugin at ${source_file}"
     # TODO: add debug logging for plugins so we get command output in dmesg.
-    /bin/sh ${source_file}
+    if [ -e "$source_file" ]; then
+      /bin/sh ${source_file}
+    fi
     [ $? -ne 0 ] && sleep 10
   done
 }

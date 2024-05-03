@@ -29,6 +29,8 @@ then
 	bad_msg "Scanning for volume groups failed!"
 else
 	good_msg "Changed and loaded volume groups..."
+	good_msg "Waiting for volume groups initialization..."
+	sleep 10
 	good_msg "Determining root volume device..."
 	return 0
 fi
