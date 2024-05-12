@@ -133,7 +133,8 @@ class InitialRamDisk:
 			"modprobe",
 			"lsmod",
 			"depmod",
-			"modinfo"
+			"modinfo",
+			"awk"
 		]:
 			os.symlink("busybox", os.path.join(self.initramfs_root, "bin", applet))
 
