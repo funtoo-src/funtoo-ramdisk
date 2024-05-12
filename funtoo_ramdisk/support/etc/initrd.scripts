@@ -203,44 +203,6 @@ sanity_check_root() {
 	return 1
 }
 
-settle_root(){
-	# This generic function can be used by any ramdisk plugin in non-udev scenarios
-	# It will busy wait for the root block device to become available
-	# Positional parameters:
-	# $1 -- delay time in seconds, supports integers or floats, or whatever sleep supports, default 0.1
-	# $2 -- amount of loop iterations before stopping busy wait, default 10
-	if [ -z "$1" ]; then
-		DELAY="0.1"
-	else
-		DELAY="$1"
-	fi
-
-	if [ -z "$2" ]; then
-		ITERS="10"
-	else
-		ITERS="$2"
-	fi
-
-	good_msg "Waiting for root block device..."
-	ITER=0
-	while [ "$ITER" < "$ITERS" ]; do
-		ROOT_DEV=$(/sbin/blkid -o device -l -t "${REAL_ROOT}")
-		if [ $? -eq 0 ] && [ -b "${ROOT_DEV}" ]; then
-			good_msg "Root block device ready ${ROOT_DEV}"
-			break
-		else
-			ITER=$(($ITER + 1))
-			sleep $DELAY
-		fi
-	done
-
-	if [ "$ITER" = "0" ]; then
-		good_msg "Waited ${DELAY} seconds for root block device"
-	else
-		good_msg "Waited ${DELAY} seconds ${ITER} times for root block device"
-	fi
-}
-
 mount_devfs () {
 	local devfs=tmpfs
 	if grep -qs devtmpfs /proc/filesystems ; then

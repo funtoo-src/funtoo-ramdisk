@@ -2,7 +2,7 @@ udev_setup() {
   return
 }
 
-udev_settle() {
+settle_root() {
   run udevadm settle --timeout=1
 }
 
