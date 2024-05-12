@@ -61,3 +61,13 @@ kernel/drivers/virtio/**
 kernel/drivers/net/virtio_net.ko
 kernel/net/vmw_vsock/**
 kernel/fs/fuse/virtiofs.ko
+
+[crypt]
+ccm
+cmac
+cryptd
+crypto_null
+crypto_simd
+ctr
+drbg
+xts

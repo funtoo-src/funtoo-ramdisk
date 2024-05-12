@@ -4,6 +4,9 @@ parse_cmdline() {
 	for x in $(cat /proc/cmdline)
 	do
 		case "${x}" in
+			crypt_root=*)
+				CRYPT_ROOT=${x#*=}
+			;;
 			real_root=*)
 				REAL_ROOT=${x#*=}
 			;;
@@ -218,6 +221,46 @@ mount_devfs () {
 	if ! fs_type_in_use devpts; then
 		mkdir -m 0755 /dev/pts
 		mount -t devpts -o gid=5,mode=0620 devpts /dev/pts  || bad_msg "Failed to mount /dev/pts"
+	fi
+}
+
+open_crypt() {
+	parse_cmdline
+	CRYPTSETUP_OPTIONS="--tries=10 --verbose"
+	CRYPT_NAME="root"
+
+	good_msg "Boot configured encrypted root device set as: ${CRYPT_ROOT}"
+	case "${CRYPT_ROOT}" in
+		LABEL=*|UUID=*)
+			CRYPT_DEV=$(/sbin/blkid -o device -l -t "${CRYPT_ROOT}")
+			if [ $? -eq 0 ] && [ -b "${CRYPT_DEV}" ]; then
+				good_msg "Found encrypted root block device ${CRYPT_DEV}"
+				CRYPT_ROOT="${CRYPT_DEV}"
+			fi
+			;;
+		*)
+			if [ -b "${CRYPT_ROOT}" ]; then
+				good_msg "Specified encrypted root block device ${CRYPT_ROOT} was found"
+			fi
+			;;
+	esac
+
+	/sbin/cryptsetup isLuks ${CRYPT_ROOT}
+	LUKS_HEADER_TEST=$?
+	if [ $LUKS_HEADER_TEST -ne 0 ]; then
+		bad_msg "The LUKS device ${CRYPT_ROOT} does not contain a LUKS header"
+		return 1
+	fi
+
+	/sbin/cryptsetup ${CRYPTSETUP_OPTIONS} luksOpen ${CRYPT_ROOT} ${CRYPT_NAME}
+	LUKS_DECRYPT_STATUS=$?
+
+	if [ $LUKS_DECRYPT_STATUS -eq 0 ]; then
+		good_msg "LUKS device ${CRYPT_ROOT} opened"
+		return 0
+	else
+		bad_msg "Failed to open LUKS device ${CRYPT_ROOT} at /dev/mapper/${CRYPT_NAME}"
+		return $LUKS_DECRYPT_STATUS
 	fi
 }
 

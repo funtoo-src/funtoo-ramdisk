@@ -22,6 +22,7 @@ class LVMRamDiskPlugin(RamDiskPlugin):
 	def post_scan_script(self):
 		return """
 . /etc/initrd.scripts
+. /etc/plugins/scan_mode/legacy.sh
 good_msg "Scanning for volume groups..."
 /sbin/lvm vgchange -ay --sysinit 2>&1
 if [ $? -ne 0 ]
@@ -29,7 +30,8 @@ then
 	bad_msg "Scanning for volume groups failed!"
 else
 	good_msg "Changed and loaded volume groups..."
-	settle_root
+	parse_cmdline
+	settle_root 2
 	good_msg "Determining root volume device..."
 	return 0
 fi
