@@ -111,3 +111,70 @@ press 'e' to edit an entry and type in the name of the new initramfs to give it 
 
 Enjoy -- and let me know how it works for you! Please report issues and feature
 requests to https://bugs.funtoo.org.
+
+Plugins
+=======
+
+``ramdisk`` ships with a collection of different plugins that add various
+boot features to a Funoo Linux system. Included plugins:
+
+* ``btrfs`` -- Adds support for booting off a root volume formatted with `btrfs <https://docs.kernel.org/filesystems/btrfs.html>`_.
+
+* ``core`` -- Adds core components required by every ``ramdisk`` generated initramfs.
+
+* ``luks`` -- Adds support for booting off a `LUKS <https://gitlab.com/cryptsetup/cryptsetup/blob/master/README.md>`_ encrypted root volume.
+
+* ``lvm`` -- Adds support for booting off a LVM root volume.
+
+Plugin Development Tips
+=======================
+
+To contribute and develop new plugins that can extend the functionality of ``ramdisk``
+there are various things to consider before diving in.
+
+* All plugin source code is located in the ``funtoo_ramdisk/plugins/`` source directory.
+
+* If you are including new binaries with your plugin in the ``binaries`` Class function,
+  they do not have to be statically linked. ``ramdisk`` will automatically include any shared
+  libraries that a dynamically linked ELF binary is dependent on.
+
+* Plugin file should match the plugin's Class ``key`` variable's value, which sets the
+  ``ramdisk.activate`` name of the plugin.
+
+* Always define the plugin's Class variable called ``hooks`` to set which execution hook
+  layers you want the plugin to run at. A list of support hook levels can be found with
+  ``git grep execute_plugins funtoo_ramdisk/support/linuxrc``
+
+* Every plugin is represents by a boilerplate Python Class that can be loaded by the main
+  ``ramdisk`` application. This Python class acts as an interface to define the attributes
+  and functions your ``ramdisk`` plugin.
+
+* To actually do work in a ``ramdisk`` plugin you must define a Class function called
+  ``{hook_level}_script(self)`` where ``{hook_level}`` matches hook level name defined in
+  the ``hooks`` Class variable. For example ``post_scan_script(self)``
+
+* In this hook level function, a busybox compatible ``/bin/sh`` script is written and embedded.
+
+* A key gotcha to understand when writing these Python plugin embedded shell scripts is
+  variable scoping due to recursive shell function calls used in other ``ramdisk`` shell
+  init scripts. The plugin scripts are invoked by ``funtoo_ramdisk/support/linuxrc``, then
+  a helper function from ``funtoo_ramdisk/support/etc/initrd.scripts`` called ``execute_plugins``
+  iteratively executes each hook level plugin shell script.
+
+* If you need to import any common shell functions as part of the initrd scripts or other plugins,
+  always source the absolute ramdisk path of those scripts. Common ones include ``/etc/initrd.scripts``
+  and ``/etc/plugins/scan_mode/legacy.sh``. You can always verify the validity of this path in a
+  ``ramdisk`` rescue shell or by directly deflating a ``ramdisk`` generated initramfs.
+
+* If you need to access kernel boot parameter shell variables in your plugin embedded shell function
+  calls, simple add ``. /etc/initrd.scripts``, which will import the ``parse_cmdline`` helper function
+  used to properly scope shell variables parsed from ``/proc/cmdline``. This is essentially how you
+  propagate downwards important kernel boot parameters that control plugin functionality.
+
+* Another note on shell sourcing within Python plugin embedded shell scripts: Always ensure to
+  source everything needed in your plugin script. This allows the plugin to be independently run
+  in the ``ramdisk`` rescue shell for extra easy debugging when iteratively testing it.
+
+* If you want to inspect the ``ramdisk`` generated initramfs compressed file contents before
+  rebooting with it for additional debugging, you can easily do so in Funtoo Linux. Simply run
+  these commands: ``mkdir /tmp/ramdisk ; cd /tmp/ramdisk``, ``cat PATH_TO_INITRAMFS | xz -d -T 0 | cpio -id``.

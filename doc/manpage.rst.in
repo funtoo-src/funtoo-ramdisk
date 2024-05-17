@@ -154,6 +154,21 @@ YOUR EXISTING, WORKING INITRAMFS THAT YOU CURRENTLY USE TO BOOT YOUR SYSTEM.**
 Instead -- create a **NEW BOOT ENTRY** to test your initramfs. In GRUB, you can also
 press 'e' to edit an entry and type in the name of the new initramfs to give it a try.
 
+PLUGINS
+=======
+
+``ramdisk`` ships with a collection of different plugins that add various boot features
+to a Funtoo Linux system. Included plugins:
+
+``btrfs``
+                        Adds support for booting off a root volume formatted with btrfs.
+``core``
+                        Adds core components required by every ``ramdisk`` generated initramfs.
+``luks``
+                        Adds support for booting off a LUKS encrypted root volume.
+``lvm``
+                        Adds support for booting off a LVM root volume.
+
 INITRAMFS BOOT OPTIONS
 ======================
 
@@ -168,6 +183,9 @@ kernel boot line. In Funtoo Linux, you would add them to ``/etc/boot.conf`` -- s
                         Defaults to ``/sbin/init`` -- what to run as PID 1 when booting your system.
 ``init_opts=``
                         Defaults to empty -- what command-line options to pass to PID 1.
+``crypt_root=``
+                        This is used to specify the root device that is LUKS encrypted by cryptsetup
+                        and we want to boot.
 ``shell``
                         Start a debug shell immediately before booting your system. This will allow
                         you to inspect the state of the initramfs. Exiting the shell will resume the
@@ -183,7 +201,8 @@ kernel boot line. In Funtoo Linux, you would add them to ``/etc/boot.conf`` -- s
                         looking for a root block device.
 ``ramdisk.activate=``
                         A comma-delimited list of plugins to enable at boot-time. For example, set this
-                        to "lvm" to enable LVM boot.
+                        to "lvm" to enable LVM boot. Or set this to "luks,lvm" to enable encrypted boot
+                        and LVM volume group scanning.
 ``ramdisk.scan_mode=``
                         Currently defaulting to "legacy" which is the only option, and means "do the
                         classic ``genkernel`` thing and manually load modules from our modules list.``.
