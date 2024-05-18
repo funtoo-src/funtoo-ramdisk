@@ -225,7 +225,17 @@ mount_devfs () {
 }
 
 open_crypt() {
+	# This function controls opening a cryptsetup LUKS encrypted root volume
+	# in the ramdisk luks plugin
+	# The crypt_root kernel boot parameter is required to be in /proc/cmdline
+	# for ramdisk to properly open the LUKS device
+	# This value of this parameter is either automatically derived by ego boot
+	# or manually set during a Funtoo install in /etc/boot.conf
+	# crypt_root contains the correct device id that maps to the LUKS encrypted device
 	parse_cmdline
+	# Global options for cryptsetup luksOpen alias subcommand
+	# At some point we will have to replace lukeOpen with the newer open subcommand
+	# More information on these CLI options can be found with: cryptsetup --help
 	CRYPTSETUP_OPTIONS="--tries=10 --verbose"
 	CRYPT_NAME="root"
 
