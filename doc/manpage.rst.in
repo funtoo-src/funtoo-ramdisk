@@ -168,6 +168,8 @@ to a Funtoo Linux system. Included plugins:
                         Adds support for booting off a LUKS encrypted root volume.
 ``lvm``
                         Adds support for booting off a LVM root volume.
+``zfs``
+                        Adds support for booting off a ZFS root volume.
 
 INITRAMFS BOOT OPTIONS
 ======================
