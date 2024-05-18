@@ -93,3 +93,6 @@ crypto_simd
 ctr
 drbg
 xts
+
+[zfs]
+zfs

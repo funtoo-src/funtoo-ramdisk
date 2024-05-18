@@ -126,6 +126,8 @@ boot features to a Funoo Linux system. Included plugins:
 
 * ``lvm`` -- Adds support for booting off a LVM root volume.
 
+* ``zfs`` -- Adds support for booting off a ZFS root volume.
+
 Plugin Development Tips
 =======================
 

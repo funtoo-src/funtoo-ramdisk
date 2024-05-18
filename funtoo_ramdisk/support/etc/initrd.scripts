@@ -146,6 +146,20 @@ determine_root() {
 				return 0
 			fi
 			;;
+		ZFS*|zfs*)
+			BOOTFS=$(/sbin/zpool list -H -o bootfs 2>/dev/null)
+			if [ "${BOOTFS}" != '-' ]; then
+				for i in ${BOOTFS}; do
+					zfs get type ${i} > /dev/null 2>&1
+					if [ $? -eq 0 ]; then
+						REAL_ROOT=${i}
+						ROOTFSTYPE=zfs
+						good_msg "Root device detected as ${REAL_ROOT}!"
+						return 0
+					fi
+				done
+			fi
+			;;
 		*)
 			if [ -b "${REAL_ROOT}" ]; then
 				good_msg "Specified block device ${REAL_ROOT} was found."

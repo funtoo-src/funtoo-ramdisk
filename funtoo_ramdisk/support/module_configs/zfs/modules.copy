@@ -71,3 +71,7 @@ crypto_simd
 ctr
 drbg
 xts
+
+[zfs]
+extra/spl.ko
+extra/zfs.ko
