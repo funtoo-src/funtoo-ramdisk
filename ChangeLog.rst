@@ -1,3 +1,14 @@
+funtoo-ramdisk 1.1.16
+---------------------
+
+Released on June 27, 2024.
+
+This is a feature release.
+
+* Add btrfs boot support.
+* Added v1 cryptsetup luks plugin (add more)
+* Add generic settle_root function.
+
 funtoo-ramdisk 1.1.15
 ---------------------
 
