@@ -88,8 +88,6 @@ cmac
 cryptd
 crypto_null
 crypto_simd
-ctr
-drbg
 xts
 
 [zfs]
