@@ -1,3 +1,12 @@
+funtoo-ramdisk 1.1.19
+---------------------
+
+Released on Juni 25, 2025.
+
+This is a feature release.
+
+* Add zfs boot support.
+
 funtoo-ramdisk 1.1.16
 ---------------------
 
