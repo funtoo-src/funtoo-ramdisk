@@ -63,7 +63,6 @@ loop
 ext4
 btrfs
 f2fs
-reiserfs
 jfs
 nfs
 xfs
@@ -87,7 +86,6 @@ ccm
 cmac
 cryptd
 crypto_null
-crypto_simd
 xts
 
 [zfs]

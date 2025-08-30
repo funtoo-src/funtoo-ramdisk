@@ -67,7 +67,6 @@ ccm
 cmac
 cryptd
 crypto_null
-crypto_simd
 xts
 
 [zfs]

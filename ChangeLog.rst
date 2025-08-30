@@ -1,3 +1,12 @@
+funtoo-ramdisk 1.1.20
+---------------------
+
+Released on August 30, 2025.
+
+This is a minor bug fix release.
+
+* Remove crypto_simd and reiserfs modules due to the kernel 6.16
+
 funtoo-ramdisk 1.1.19
 ---------------------
 
